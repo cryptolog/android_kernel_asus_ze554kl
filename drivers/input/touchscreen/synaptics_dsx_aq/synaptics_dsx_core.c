@@ -154,6 +154,7 @@ int charge_mode =0 ;
 static int g_syna_touch_init_status = 0;
 static bool hall_sensor_detect_s = false;
 static bool key_already_down_s = false;
+static bool cover_enable_touch = false;
 
 extern bool proximity_check_status(void);
 extern int HALLsensor_gpio_value(void);
@@ -1352,12 +1353,14 @@ static ssize_t synaptics_rmi4_cover_mode_store(struct device *dev,
 		if(cover_mode == 0)
 		{	
 			printk("[Touch] clear synaptics_rmi4_free_fingers\n");
+			cover_enable_touch = false;
 			synaptics_rmi4_free_fingers(rmi4_data);
 			asus_boe_disable_glove(rmi4_data);
 		}
 		else
 		{
 			msleep(400);
+			cover_enable_touch = true;
 			asus_boe_enable_glove(rmi4_data);
 			printk("[Touch] clear synaptics_rmi4_free_fingers\n");
 			synaptics_rmi4_free_fingers(rmi4_data);
@@ -2403,7 +2406,7 @@ static irqreturn_t synaptics_rmi4_irq(int irq, void *data)
 	if (gpio_get_value(bdata->irq_gpio) != bdata->irq_on_state)
 		goto exit;
 
-	if (SYNAPTICS_TOUCH_DISABLE)
+	if (((!cover_enable_touch) && (HALLsensor_gpio_value() == 0)) || (SYNAPTICS_TOUCH_DISABLE))
 		synaptics_rmi4_sensor_report(rmi4_data, false);
 	else
 		synaptics_rmi4_sensor_report(rmi4_data, true);

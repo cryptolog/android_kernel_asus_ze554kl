@@ -2563,6 +2563,11 @@ void asus_usb_alert_work(struct work_struct *work)
 	status = gpio_get_value(global_gpio->USB_THERMAL_ALERT);
 	CHG_DBG("%s: USB_alert boot completed, gpio79 status = %d\n", __func__, status);
 
+	if(status==1){
+		status = 0;
+		CHG_DBG("Thermal alert triggered but not report it\n");
+	}
+	
 	switch_set_state(&usb_alert_dev, status);
 	usb_alert_flag = status;
 
@@ -2582,6 +2587,11 @@ static irqreturn_t usb_temp_alert_interrupt(int irq, void *dev_id)
 	int rc;
 
 	CHG_DBG("%s: Get USB_Thermal_Status : %d\n", __func__, status);
+
+	if(status==1){
+		status = 0;
+		CHG_DBG("Thermal alert triggered but not report it\n");
+	}	
 
 	switch_set_state(&usb_alert_dev, status);
 	usb_alert_flag = status;
