@@ -122,15 +122,6 @@ EXPORT_SYMBOL(FRGBsensor_report_raw);
 
 void lrgbsensor_report_lux(void)
 {
-	int i = 0;
-	/* Check RGB data */
-	for (i=1;i<5;i++) {
-		if (-1 == report_data[i]) {
-			log("There's no full RGB data to report\n");
-			return;
-		}
-	}
-
 	input_report_abs(input_dev_als, ABS_MISC, report_data[0]);		/* LUX */
 	input_report_abs(input_dev_als, ABS_HAT0X, report_data[1]);	/* R */
 	input_report_abs(input_dev_als, ABS_HAT0Y, report_data[2]);	/* G */

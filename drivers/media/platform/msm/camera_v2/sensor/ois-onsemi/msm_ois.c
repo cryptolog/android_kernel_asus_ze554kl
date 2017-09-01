@@ -626,31 +626,6 @@ static int32_t msm_ois_config(struct msm_ois_ctrl_t *o_ctrl,
 		break;
 	}
 	/*ASUS_BSP --- bill_chen "Implement ois command for dit 3A"*/
-	//ASUS_BSP Lucien +++: Implement read vcm info from EEPROM
-	case CFG_OIS_I2C_UPDATE_FW:{
-		struct msm_camera_i2c_seq_reg_setting conf_array;
-		//uint32_t fw_version;
-#ifdef CONFIG_COMPAT
-		if (is_compat_task()) {
-			memcpy(&conf_array,
-				(void *)cdata->cfg.settings,
-				sizeof(struct msm_camera_i2c_seq_reg_setting));
-		} else
-#endif
-		if (copy_from_user(&conf_array,
-			(void *)cdata->cfg.settings,
-			sizeof(struct msm_camera_i2c_seq_reg_setting))) {
-			pr_err("%s:%d failed\n", __func__, __LINE__);
-			rc = -EFAULT;
-			break;
-		}
-
-		//rc = onsemi_read_dword(o_ctrl,0x8000,&fw_version);
-		//pr_info("%s:%d VCM from EEPROM = %x\n", __func__, __LINE__, conf_array.delay);
-		//rc = msm_ois_check_update_fw(o_ctrl, fw_version, conf_array.delay);
-		break;
-	}
-	//ASUS_BSP Lucien ---: Implement read vcm info from EEPROM
 	default:
 		break;
 	}
@@ -992,8 +967,6 @@ static long msm_ois_subdev_do_ioctl(
 			parg = &ois_data;
 			break;
 		/*ASUS_BSP +++ bill_chen "Implement ois command for dit 3A"*/
-		//ASUS_BSP Lucien +++: Implement read vcm info from EEPROM
-		case CFG_OIS_I2C_UPDATE_FW:
 		case CFG_OIS_I2C_WRITE_MODE:
 			if (copy_from_user(&settings32,
 				(void *)compat_ptr(u32->cfg.settings),

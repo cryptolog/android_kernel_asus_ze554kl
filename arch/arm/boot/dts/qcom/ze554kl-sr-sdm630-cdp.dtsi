@@ -143,6 +143,8 @@
 	//qcom,platform-te-gpio = <&tlmm 59 0>;
 };
 
+// ASUS BSP Display, disable DP +++
+/*
 &mdss_dp_ctrl {
 	pinctrl-names = "mdss_dp_active", "mdss_dp_sleep";
 	pinctrl-0 = <&mdss_dp_aux_active &mdss_dp_usbplug_cc_active>;
@@ -151,6 +153,8 @@
 	qcom,aux-sel-gpio = <&tlmm 56 0>;
 	qcom,usbplug-cc-gpio = <&tlmm 58 0>;
 };
+*/
+// ASUS BSP Display, disable DP ---
 
 &pm660l_wled {
 	qcom,led-strings-list = [01 02];
@@ -224,6 +228,10 @@
 	qcom,mdss-dsi-bl-pwm-pmi;
 	qcom,mdss-dsi-bl-pmic-pwm-frequency = <100>;
 	qcom,panel-supply-entries = <&dsi_panel_split_link_pwr_supply>;
+};
+
+&dsi_rm67195_amoled_fhd_cmd {
+	qcom,panel-supply-entries = <&dsi_panel_pwr_supply_labibb_amoled>;
 };
 
 &pm660_gpios {

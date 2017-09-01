@@ -152,9 +152,11 @@ int glove_mode = 0;
 int cover_mode = 0;
 int charge_mode =0 ;
 static int g_syna_touch_init_status = 0;
-
+static bool hall_sensor_detect_s = false;
+static bool key_already_down_s = false;
 
 extern bool proximity_check_status(void);
+extern int HALLsensor_gpio_value(void);
 
 static int synaptics_rmi4_check_status(struct synaptics_rmi4_data *rmi4_data,
 		bool *was_in_bl_mode);
@@ -710,22 +712,22 @@ void synaptic_usb_detection(bool plugin)
 			/*AC plug in*/
 			charge_mode =1;
 			printk("[synaptic] charger mode =1 ! \n");
-			retval = synaptics_rmi4_reg_read(asus_rmi4_data,0x0024,f12_2d_ctrl54,1);
+			retval = synaptics_rmi4_reg_read(asus_rmi4_data,0x0021,f12_2d_ctrl54,1);
 			if (retval < 0)
 				printk("[synaptic] charger mode fail !\n");
 			f12_2d_ctrl54[0] = 0x00;
-			retval = synaptics_rmi4_reg_write(asus_rmi4_data,0x0024,f12_2d_ctrl54,1);
+			retval = synaptics_rmi4_reg_write(asus_rmi4_data,0x0021,f12_2d_ctrl54,1);
 			if (retval < 0)
 				printk("[synaptic] charger mode =1 fail !\n");
 		}else{
 			/*no AC */
 			charge_mode =0;
 			printk("[synaptic] charger mode =0 ! \n");
-			retval = synaptics_rmi4_reg_read(asus_rmi4_data,0x0024,f12_2d_ctrl54,1);
+			retval = synaptics_rmi4_reg_read(asus_rmi4_data,0x0021,f12_2d_ctrl54,1);
 			if (retval < 0)
 				printk("[synaptic] charger mode =0 fail !\n");
 			f12_2d_ctrl54[0] = 0x01;
-			retval = synaptics_rmi4_reg_write(asus_rmi4_data,0x0024,f12_2d_ctrl54,1);
+			retval = synaptics_rmi4_reg_write(asus_rmi4_data,0x0021,f12_2d_ctrl54,1);
 			if (retval < 0)
 				printk("[synaptic] charger mode =0 fail !\n");
 		}
@@ -741,16 +743,16 @@ static ssize_t asus_boe_enable_glove(struct synaptics_rmi4_data *rmi4_data)
 	char f12_2d_ctrl15[7] = {0};
 	char f12_2d_ctrl23[5] = {0};
 	char f12_2d_ctrl10[19] = {0};
-	char tempvalue = 0x11;
+	char tempvalue = 0x1d;
 
 	//set f12_2d_ctrl15=0x25 ++
-	retval = synaptics_rmi4_reg_read(rmi4_data,0x0019,f12_2d_ctrl15,1);
+	retval = synaptics_rmi4_reg_read(rmi4_data,0x0018,f12_2d_ctrl15,1);
 	if (retval < 0)
 		return -EINVAL;
 
 	f12_2d_ctrl15[0] = 0x7b;
 
-	retval = synaptics_rmi4_reg_write(rmi4_data,0x0019,f12_2d_ctrl15,1);
+	retval = synaptics_rmi4_reg_write(rmi4_data,0x0018,f12_2d_ctrl15,1);
 	if (retval < 0)
 		return -EINVAL;
 	//set f12_2d_ctrl15=0x25 --
@@ -768,12 +770,12 @@ static ssize_t asus_boe_enable_glove(struct synaptics_rmi4_data *rmi4_data)
 	//set f12_2d_ctrl10 00/00 -> 0x14 00/01 -> 0x15 --
 
 	//set f12_2d_ctrl23->0x05 ++
-	retval = synaptics_rmi4_reg_read(rmi4_data,0x001D,f12_2d_ctrl23,5);
+	retval = synaptics_rmi4_reg_read(rmi4_data,0x001C,f12_2d_ctrl23,5);
 	if (retval < 0)
 		return -EINVAL;
 
 	f12_2d_ctrl23[0] |= 0x20;
-	retval = synaptics_rmi4_reg_write(rmi4_data,0x001D,f12_2d_ctrl23,5);
+	retval = synaptics_rmi4_reg_write(rmi4_data,0x001C,f12_2d_ctrl23,5);
 	if (retval < 0)
 		return -EINVAL;
 	//set f12_2d_ctrl23->0x05 --
@@ -802,16 +804,16 @@ static ssize_t asus_boe_disable_glove(struct synaptics_rmi4_data *rmi4_data)
 	char f12_2d_ctrl15[7] = {0};
 	char f12_2d_ctrl23[5] = {0};
 	char f12_2d_ctrl10[19] = {0};
-	char tempvalue = 0x29;
+	char tempvalue = 0x2d;
 
 	//set f12_2d_ctrl15=0x25 ++
-	retval = synaptics_rmi4_reg_read(rmi4_data,0x0019,f12_2d_ctrl15,1);
+	retval = synaptics_rmi4_reg_read(rmi4_data,0x0018,f12_2d_ctrl15,1);
 	if (retval < 0)
 		return -EINVAL;
 
 	f12_2d_ctrl15[0] = 0x7b;
 
-	retval = synaptics_rmi4_reg_write(rmi4_data,0x0019,f12_2d_ctrl15,1);
+	retval = synaptics_rmi4_reg_write(rmi4_data,0x0018,f12_2d_ctrl15,1);
 	if (retval < 0)
 		return -EINVAL;
 	//set f12_2d_ctrl15=0x25 --
@@ -829,12 +831,12 @@ static ssize_t asus_boe_disable_glove(struct synaptics_rmi4_data *rmi4_data)
 	//set f12_2d_ctrl10 00/00 -> 0x14 00/01 -> 0x15 --
 
 	//set f12_2d_ctrl23->0x05 ++
-	retval = synaptics_rmi4_reg_read(rmi4_data,0x001D,f12_2d_ctrl23,5);
+	retval = synaptics_rmi4_reg_read(rmi4_data,0x001C,f12_2d_ctrl23,5);
 	if (retval < 0)
 		return -EINVAL;
 
 	f12_2d_ctrl23[0] &= 0xDF;
-	retval = synaptics_rmi4_reg_write(rmi4_data,0x001D,f12_2d_ctrl23,5);
+	retval = synaptics_rmi4_reg_write(rmi4_data,0x001C,f12_2d_ctrl23,5);
 	if (retval < 0)
 		return -EINVAL;
 	//set f12_2d_ctrl23->0x05 --
@@ -857,7 +859,7 @@ static ssize_t asus_boe_disable_glove(struct synaptics_rmi4_data *rmi4_data)
 }
 
 
-static ssize_t asus_boe_cover_with_glove(struct synaptics_rmi4_data *rmi4_data)
+/*static ssize_t asus_boe_cover_with_glove(struct synaptics_rmi4_data *rmi4_data)
 {
 	int retval = 0;
 	char f12_2d_ctrl26[1]={0};
@@ -1101,7 +1103,7 @@ static ssize_t asus_boe_nogolve_without_cover(struct synaptics_rmi4_data *rmi4_d
 	//set f12_2d_ctrl23->0x05 --
 
 	return retval;
-}
+}*/
 
 static struct kobj_attribute virtual_key_map_attr = {
 	.attr = {
@@ -1345,41 +1347,30 @@ static ssize_t synaptics_rmi4_cover_mode_store(struct device *dev,
 	printk("[synaptics] cover_mode: %d\n", cover_mode);
 
 	mutex_lock(&(rmi4_data->cover_mutex));
-	
 	if(glove_mode == 0)
 	{
 		if(cover_mode == 0)
 		{	
 			printk("[Touch] clear synaptics_rmi4_free_fingers\n");
 			synaptics_rmi4_free_fingers(rmi4_data);
-			asus_boe_nogolve_without_cover(rmi4_data);
-		
+			asus_boe_disable_glove(rmi4_data);
 		}
 		else
 		{
-			asus_boe_cover_without_glove(rmi4_data);
-			
+			msleep(400);
+			asus_boe_enable_glove(rmi4_data);
 			printk("[Touch] clear synaptics_rmi4_free_fingers\n");
 			synaptics_rmi4_free_fingers(rmi4_data);
-		}
+		}	
+
 	}
 	else
 	{
-		if(cover_mode == 0)
-		{
-			printk("[Touch] clear synaptics_rmi4_free_fingers\n");
-			synaptics_rmi4_free_fingers(rmi4_data);
-			asus_boe_golve_without_cover(rmi4_data);
-			
-		}
-		else
-		{
-			
-			asus_boe_cover_with_glove(rmi4_data);
-			printk("[Touch] clear synaptics_rmi4_free_fingers\n");
-			synaptics_rmi4_free_fingers(rmi4_data);
-		}
+		printk("[Touch] clear synaptics_rmi4_free_fingers\n");
+		synaptics_rmi4_free_fingers(rmi4_data);
+		asus_boe_enable_glove(rmi4_data);	
 	}
+
 	mutex_unlock(&(rmi4_data->cover_mutex));
 	
 	return count;
@@ -2199,9 +2190,23 @@ static void synaptics_rmi4_f1a_report(struct synaptics_rmi4_data *rmi4_data,
 			}
 			touch_count++;
 			
+			if (hall_sensor_detect_s)
+				msleep(20);
+			if ((HALLsensor_gpio_value() > 0) || (key_already_down_s == true))
+			{
 				input_report_key(rmi4_data->input_dev,
 					f1a->button_map[button],
 					status);
+				key_already_down_s = false;
+				if (status)
+					key_already_down_s = true;
+				printk("[synaptic][touch] send keycode = %d, status = %d\n", f1a->button_map[button], status);
+			}
+			else
+			{
+				hall_sensor_detect_s = true;
+				printk("[synaptic][touch] disable VK due to hall sensor CLOSE\n");
+			}
 			/*if(0 == report_hall_status())
 			{
 				input_report_key(rmi4_data->input_dev,
@@ -2218,9 +2223,23 @@ static void synaptics_rmi4_f1a_report(struct synaptics_rmi4_data *rmi4_data,
 			if (before_2d_status[button] == 1) {
 				before_2d_status[button] = 0;
 				touch_count++;
-				input_report_key(rmi4_data->input_dev,
+				if (hall_sensor_detect_s)
+					msleep(20);
+				if ((HALLsensor_gpio_value() > 0) || (key_already_down_s == true))
+				{
+					input_report_key(rmi4_data->input_dev,
 						f1a->button_map[button],
 						status);
+					key_already_down_s = false;
+					if (status)
+						key_already_down_s = true;
+					printk("[synaptic][touch] send keycode2 = %d, status = %d\n", f1a->button_map[button], status);
+				}
+				else
+				{
+					hall_sensor_detect_s = true;
+					printk("[synaptic][touch] disable VK due to hall sensor CLOSE\n");
+				}
 			} else {
 				if (status == 1)
 					while_2d_status[button] = 1;
@@ -4232,7 +4251,10 @@ static int synaptics_rmi4_sw_reset(struct synaptics_rmi4_data *rmi4_data)
 		if (retval < 0)
 			return retval;
 	}
-
+	if(charge_mode == 1)
+			synaptic_usb_detection(true);
+		else
+			synaptic_usb_detection(false);
 	return 0;
 }
 
@@ -4287,8 +4309,7 @@ static void synaptics_rmi4_rebuild_work(struct work_struct *work)
 				"%s: Failed to set up input device\n",
 				__func__);
 		goto exit;
-	}
-
+	}	
 	for (attr_count = 0; attr_count < ARRAY_SIZE(attrs); attr_count++) {
 		retval = sysfs_create_file(&rmi4_data->input_dev->dev.kobj,
 				&attrs[attr_count].attr);
@@ -5342,7 +5363,7 @@ exit:
 		synaptics_rmi4_free_fingers(asus_rmi4_data);
 		msleep(20);
 		printk("[Touch] : end finger start\n");
-		if(glove_mode == 0)
+		if((glove_mode == 0) && (cover_mode == 0))
 			asus_boe_disable_glove(asus_rmi4_data);
 		else
 			asus_boe_enable_glove(asus_rmi4_data);
@@ -5382,7 +5403,7 @@ int asus_rmi4_resume(void)
 	printk("[Touch] : asus_rmi4_resume!\n");
 	synaptics_rmi4_wakeup_gesture(asus_rmi4_data, false);
 	queue_work(asus_rmi4_data->suspend_resume_wq, &asus_rmi4_data->resume_work);
-	msleep(120);
+	msleep(100);
 /*	if (asus_rmi4_data->enable_wakeup_gesture && ((gesture_mode & 0x40) || (dclick_mode == 1) || (swipe_mode ==1))) {
 		printk("[Touch] : resuem from gesture mode \n");
 		disable_irq_wake(asus_rmi4_data->irq);

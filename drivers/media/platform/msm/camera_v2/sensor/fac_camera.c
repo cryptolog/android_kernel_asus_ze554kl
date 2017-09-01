@@ -1212,7 +1212,8 @@ int ov8856_otp_read(void)
 
 static int rear_opt_1_read(struct seq_file *buf, void *v)
 {	
-	int i;
+	int i, rc;
+	static int cnt = 0;
 	/*
 	for( i = 0; i < OTP_DATA_LEN_WORD; i++)
 	{
@@ -1255,6 +1256,18 @@ static int rear_opt_1_read(struct seq_file *buf, void *v)
 		seq_printf(buf, "0x%02X ",rear_otp_data[i]);
 		if((i&7) == 7)
 		seq_printf(buf ,"\n");
+	}
+
+	if(cnt < 1)
+	{
+		//ASUS_BSP Lucien +++: Replace update ois fw after reading vcm data
+		rear_otp_vcm_version = g_rear_eeprom_mapdata.mapdata[0x40A];
+		pr_info("%s: Read vcm version from eeprom is 0x%02x", __func__, rear_otp_vcm_version);
+
+		rc = ois_read_rear_vcm_version(0, rear_otp_vcm_version);
+		if(rc < 0) pr_err("%s: ois_read_rear_vcm_version failed\n", __func__);
+		//ASUS_BSP Lucien ---: Replace update ois fw after reading vcm data
+		cnt++;
 	}
 
 	return 0;

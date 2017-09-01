@@ -41,6 +41,7 @@
 			interrupt-names = "kpdpwr", "resin",
 					"resin-bark", "kpdpwr-resin-bark";
 			qcom,pon-dbc-delay = <15625>;
+			qcom,kpdpwr-sw-debounce;
 			qcom,system-reset;
 			qcom,store-hard-reset-reason;
 
@@ -287,6 +288,18 @@
 				qcom,vadc-thermal-node;
 			};
 
+			chan@4f {
+				label = "pa_therm0";
+				reg = <0x4f>;
+				qcom,decimation = <2>;
+				qcom,pre-div-channel-scaling = <0>;
+				qcom,calibration-type = "ratiometric";
+				qcom,scale-function = <2>;
+				qcom,hw-settle-time = <2>;
+				qcom,fast-avg-setup = <0>;
+				qcom,vadc-thermal-node;
+			};
+
 			chan@1d {
 				label = "drax_temp";
 				reg = <0x1d>;
@@ -333,7 +346,7 @@
 				qcom,fast-avg-setup = <0>;
 			};
 			
-			chan@4f {
+			chan@4a {
 				label = "asus_pa_therm";
 				reg = <0x4f>;
 				qcom,decimation = <2>;
@@ -517,7 +530,7 @@
 
 			qcom,default-sink-caps = <5000 3000>, /* 5V @ 3A */
 						 <7500 2000>, /* 7.5V @ 2A */
-						 <9000 1500>; /* 9V @ 1.5A */
+						 <9000 1670>; /* 9V @ 1.67A */
 		};
 
 		pm660_adc_tm: vadc@3400 {
@@ -598,6 +611,7 @@
 			qcom,rradc-base = <0x4500>;
 			qcom,fg-esr-timer-awake = <96>;
 			qcom,fg-esr-timer-asleep = <256>;
+			qcom,fg-esr-timer-charging = <96>;
 			qcom,cycle-counter-en;
 
 			qcom,fg-chg-term-current = <100>;

@@ -58,7 +58,8 @@
 #define AUDIO_SET_MODE _IOWR(CAL_IOCTL_MAGIC, 225, void *)
 extern int get_audiomode(void);
 //Jacob cherry pick ZE500KL change ---
-
+#define AUDIO_SET_FORMAT _IOWR(CAL_IOCTL_MAGIC, 231, void *)
+extern int get_audioformat(void);
 enum {
 	CVP_VOC_RX_TOPOLOGY_CAL_TYPE = 0,
 	CVP_VOC_TX_TOPOLOGY_CAL_TYPE,
@@ -118,6 +119,7 @@ enum {
 	//Sharon++
 	SET_MODE_TYPE,
 	//Sharon--
+        SET_FORMAT_TYPE,
 	/* ASUS_BSP Eric +++*/
 	GET_IMP_TYPE,
 	/* ASUS_BSP Eric ---*/

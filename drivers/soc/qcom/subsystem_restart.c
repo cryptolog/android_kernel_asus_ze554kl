@@ -668,6 +668,8 @@ static void subsystem_ramdump(struct subsys_device *dev, void *data)
 		if (dev->desc->ramdump((is_ramdump_enabled(dev) && get_ssr_enable_ramdumps()), dev->desc) < 0)/*ASUS-BBSP Skip ramdump or panic in a specific reason+*/
 			pr_warn("%s[%s:%d]: Ramdump failed.\n",
 				name, current->comm, current->pid);
+
+	dev->do_ramdump_on_put = false;
 }
 
 static void subsystem_free_memory(struct subsys_device *dev, void *data)

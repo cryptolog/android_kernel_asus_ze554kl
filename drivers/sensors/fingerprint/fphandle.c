@@ -54,7 +54,7 @@
 #include <soc/qcom/scm.h>
 #include <soc/qcom/qseecomi.h>
 #include <linux/proc_fs.h>
-
+#include <linux/timer.h>
 //herman poll wait start
 #include <linux/poll.h>
 //herman poll wait end
@@ -89,6 +89,7 @@ static int g_module_vendor;
 #define vendor_module_gdix_5216 6
 
 extern bool g_Charger_mode;
+bool g_FP_Disable_Touch = false;
 
 struct fp_device_data {
 	/* +++ common part +++ */
@@ -161,6 +162,9 @@ struct fp_device_data {
 	struct notifier_block notifier;
 	char device_available;
 	char fb_black;
+	bool enable_touch_mask;
+	unsigned long FpTimer_expires;
+    struct timer_list FpMaskTouch_Timer;
 	/* --- Goodix --- */
 };
 /* +++ Synaptics part +++ */
@@ -228,6 +232,8 @@ struct gf_key_map key_map[] =
 
 };
 
+static void init_FpMaskTouch_Timer(struct fp_device_data *gf_dev);
+static void del_FpMaskTouch_Timer(struct fp_device_data *gf_dev);
 
 /**************************debug******************************/
 #define GF_DEBUG
@@ -1177,6 +1183,8 @@ static long gf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         }
     }
 
+    printk("[gf_ioctl][Jacob] cmd = %d \n", cmd);
+
 	switch (cmd) {
 	case GF_IOC_DISABLE_IRQ:
 		gf_disable_irq(gf_dev);
@@ -1261,6 +1269,16 @@ static long gf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             gf_power_off(gf_dev);
         gf_dev->device_available = 0;
         break;
+    case GF_IOC_TOUCH_ENABLE_MASK:
+		gf_dev->enable_touch_mask = 1;
+        pr_info("[JK] GF_IOC_TOUCH_ENABLE_MASK !\n");
+        break;
+    case GF_IOC_TOUCH_DISABLE_MASK:
+		del_FpMaskTouch_Timer(gf_dev);
+		gf_dev->enable_touch_mask = 0;
+		g_FP_Disable_Touch = false;
+        pr_info("[JK] GF_IOC_TOUCH_DISABLE_MASK !\n");
+        break;
     case GF_IOC_CLEAN_EARLY_WAKE_HINT:
         if(gf_dev->fb_black == 0)
             pr_info("Screen on, Skip reset wake up hint !\n");
@@ -1314,9 +1332,14 @@ static irqreturn_t gf_irq(int irq, void *handle)
         		kill_fasync(&gf_dev->async, SIGIO, POLL_IN);
 #endif
         }
+	if (gf_dev->enable_touch_mask) {
+		g_FP_Disable_Touch = true;
+	    init_FpMaskTouch_Timer(gf_dev);
+	}
+
 	return IRQ_HANDLED;
 }
-
+EXPORT_SYMBOL(g_FP_Disable_Touch);
 static int gf_open(struct inode *inode, struct file *filp)
 {
 	struct fp_device_data *gf_dev;
@@ -1429,6 +1452,7 @@ static int goodix_fb_state_chg_callback(struct notifier_block *nb,
 			if (gf_dev->device_available == 1) {
 				gf_dev->fb_black = 1;
 				gf_dev->FP_ID2 = 1;
+				g_FP_Disable_Touch = false;
                                 if (gf_dev->module_vendor == vendor_module_gdix_3266A) {
                                         temp = GF_NET_EVENT_FB_BLACK;
                                         sendnlmsg(&temp);
@@ -1490,6 +1514,49 @@ static void gf_reg_key_kernel(struct fp_device_data *gf_dev)
 /* --- goodix operate zone --- */
 
 /* +++ common operate zone +++ */
+
+static void clean_touch_mask(unsigned long ptr) {
+	printk("[JK] Clean touch mask \n");
+	g_FP_Disable_Touch = false;
+
+	return;
+}
+
+static void init_FpMaskTouch_Timer(struct fp_device_data *gf_dev)
+{
+
+	unsigned long expires;
+
+	printk("[JK] Init Disable touch timer\n");
+
+	if (!gf_dev->FpTimer_expires) {
+		init_timer(&gf_dev->FpMaskTouch_Timer);
+		gf_dev->FpMaskTouch_Timer.function = clean_touch_mask;
+		gf_dev->FpMaskTouch_Timer.expires = jiffies + msecs_to_jiffies(500);
+		add_timer(&gf_dev->FpMaskTouch_Timer);
+		gf_dev->FpTimer_expires = gf_dev->FpMaskTouch_Timer.expires;
+	} else {
+		expires = jiffies + msecs_to_jiffies(500);
+		if (!expires)
+			expires = 1;
+
+		if (!gf_dev->FpTimer_expires || time_after(expires, gf_dev->FpTimer_expires)) {
+			mod_timer(&gf_dev->FpMaskTouch_Timer, expires);
+			gf_dev->FpTimer_expires = expires;
+		}
+	}
+
+	return;
+}
+
+static void del_FpMaskTouch_Timer(struct fp_device_data *gf_dev)
+{
+	del_timer(&gf_dev->FpMaskTouch_Timer);
+	gf_dev->FpTimer_expires = 0;
+	g_FP_Disable_Touch = false;
+	printk("[JK] Del Disable touch timer\n");
+	return;
+}
 
 /* +++ ASUS proc fingerprint Interface +++ */
 static int fingerpring_proc_read(struct seq_file *buf, void *v)
@@ -2122,19 +2189,22 @@ static int fp_check_vendor(struct fp_device_data *pdata)
 {
 
 	int status = 0;
-        int id1 = 0;
+	int id1 = 0;
 
-        id1 = gpio_get_value(pdata->FP_ID1);
-/*        id2 = gpio_get_value(pdata->FP_ID2); */         
-	status = id1;
+	id1 = gpio_get_value(pdata->FP_ID1);
+/*  id2 = gpio_get_value(pdata->FP_ID2); */         
+/*	status = id1;
 
 	if (status) {
 		status = vendor_module_gdix_5206;
 	} else {
 		status = vendor_module_gdix_5216;
-	}
+	}*/
 
+	//ASUS_BSP YuSiang: Fix module to vendor_module_gdix_5216 for ZE554KL
+	status = vendor_module_gdix_5216;
 	printk("[Jacob] ID1 = %d  \n",  id1);
+	printk("[Jacob] status = %d  \n",  status);
 
 	return status;
 }
@@ -2260,6 +2330,8 @@ static int fp_sensor_probe(struct platform_device *pdev)
 	/* Inin status */
 	fp_device->module_vendor = 0;
 	fp_device->irq_wakeup_flag = false;
+	fp_device->FpTimer_expires = 0;
+	fp_device->enable_touch_mask = 0;
 	/* Inin status */
 
 	/*status = fp_pars_dt(&pdev->dev, fp_device);*/

@@ -31,7 +31,6 @@
 #include "diag_masks.h"
 #include "diag_ipc_logging.h"
 
-
 struct diag_mux_state_t *diag_mux;
 static struct diag_logger_t usb_logger;
 static struct diag_logger_t md_logger;
@@ -153,9 +152,17 @@ int diag_mux_write(int proc, unsigned char *buf, int len, int ctx)
 		case DIAG_ID_MPSS:
 			upd = PERIPHERAL_MODEM;
 			break;
+		case DIAG_ID_LPASS:
+			upd = PERIPHERAL_LPASS;
+			break;
+		case DIAG_ID_CDSP:
+			upd = PERIPHERAL_CDSP;
+			break;
 		case UPD_WLAN:
+		case UPD_AUDIO:
+		case UPD_SENSORS:
 			if (!driver->num_pd_session)
-				upd = PERIPHERAL_MODEM;
+				upd = PERIPHERAL_LPASS;
 			break;
 		default:
 			pr_err("diag: invalid pd ctxt= %d\n", upd);

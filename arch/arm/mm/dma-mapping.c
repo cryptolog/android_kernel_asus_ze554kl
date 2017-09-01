@@ -672,7 +672,7 @@ static void __free_from_contiguous(struct device *dev, struct page *page,
 	if (PageHighMem(page))
 		__dma_free_remap(cpu_addr, size, true);
 	else
-		__dma_remap(page, size, PAGE_KERNEL, false);
+		__dma_remap(page, size, PAGE_KERNEL, true);
 	dma_release_from_contiguous(dev, page, size >> PAGE_SHIFT);
 }
 
@@ -2168,6 +2168,9 @@ arm_iommu_create_mapping(struct bus_type *bus, dma_addr_t base, u64 size)
 
 	if (!bitmap_size)
 		return ERR_PTR(-EINVAL);
+
+	WARN(!IS_ALIGNED(size, SZ_128M),
+			"size is not aligned to 128M, alignment enforced");
 
 	if (bitmap_size > PAGE_SIZE) {
 		extensions = bitmap_size / PAGE_SIZE;

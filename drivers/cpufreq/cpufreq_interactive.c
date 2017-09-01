@@ -453,6 +453,7 @@ static unsigned int sl_busy_to_laf(struct cpufreq_interactive_policyinfo *ppol,
 
 #define NEW_TASK_RATIO 75
 #define PRED_TOLERANCE_PCT 10
+#define ASUS_CAM_LOAD 90
 static void cpufreq_interactive_timer(unsigned long data)
 {
 	s64 now;
@@ -481,7 +482,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	bool jump_to_max = false;
 	//BSP Clay +++ for camera, choose average load
 	int load_count=0;// average load count
-	bool enable_flag=false; // when camera target_load = 99
+	bool enable_flag=false; // when camera target_load = ASUS_CAM_LOAD
 	//BSP Clay --- for camera, choose average load
 
 	if (!down_read_trylock(&ppol->enable_sem))
@@ -501,7 +502,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	now = ktime_to_us(ktime_get());
 	ppol->last_evaluated_jiffy = get_jiffies_64();
 
-	if( *(tunables->target_loads) == 99){
+	if( *(tunables->target_loads) == ASUS_CAM_LOAD){
 	    enable_flag = true;
 	}
 

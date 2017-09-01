@@ -1786,7 +1786,7 @@ static int msm_thermal_lmh_dcvs_init(struct platform_device *pdev)
 	if (ret)
 		pr_err("Unable enable CRNT algo for cluster1\n");
 
-	lmh_dcvs_available = true;
+	lmh_dcvs_available = false;
 
 	return ret;
 }

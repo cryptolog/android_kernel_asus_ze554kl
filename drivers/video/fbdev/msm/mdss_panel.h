@@ -842,6 +842,7 @@ struct mdss_panel_info {
 
 	u32 cont_splash_enabled;
 	bool esd_rdy;
+	bool esd_crash;
 	u32 partial_update_supported; /* value from dts if pu is supported */
 	u32 partial_update_enabled; /* is pu currently allowed */
 	u32 dcs_cmd_by_left;
@@ -1005,6 +1006,9 @@ struct mdss_panel_data {
 	 * are still on; panel will recover after unblank
 	 */
 	bool panel_disable_mode;
+
+	int panel_te_gpio;
+	struct completion te_done;
 };
 
 struct mdss_panel_debugfs_info {

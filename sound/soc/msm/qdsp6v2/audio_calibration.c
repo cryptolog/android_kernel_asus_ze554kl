@@ -57,7 +57,7 @@ extern uint32_t g_ZR;
 int audio_mode = -1;
 int mode = -1;
 //Jacob cherry pick ZE500KL change ---
-
+int audio_24bit = 0;
 static bool callbacks_are_equal(struct audio_cal_callbacks *callback1,
 				struct audio_cal_callbacks *callback2)
 {
@@ -494,6 +494,17 @@ static long audio_cal_shared_ioctl(struct file *file, unsigned int cmd,
         mutex_unlock(&audio_cal.cal_mutex[SET_MODE_TYPE]);
         goto done;
 	//Jacob cherry pick ZE500KL change ---
+//Rice
+	case AUDIO_SET_FORMAT:
+        mutex_lock(&audio_cal.cal_mutex[SET_FORMAT_TYPE]);
+        if(copy_from_user(&audio_24bit, (void *)arg,sizeof(audio_24bit))) {
+            pr_err("%s: Could not copy lmode to user\n", __func__);
+            ret = -EFAULT;			
+        }
+        printk("%s: audio_24bit=%d\n",__func__,audio_24bit);
+        mutex_unlock(&audio_cal.cal_mutex[SET_FORMAT_TYPE]);
+        goto done;
+//Rice
 	default:
 		pr_err("%s: ioctl not found!\n", __func__);
 		ret = -EFAULT;
@@ -647,7 +658,7 @@ static long audio_cal_ioctl(struct file *f,
 //Jacob cherry pick ZE500KL change +++
 #define AUDIO_SET_MODE32 _IOWR(CAL_IOCTL_MAGIC,225,compat_uptr_t)
 //Jacob cherry pick ZE500KL change ---
-
+#define AUDIO_SET_FORMAT32 _IOWR(CAL_IOCTL_MAGIC,231,compat_uptr_t) //Rice
 static long audio_cal_compat_ioctl(struct file *f,
 		unsigned int cmd, unsigned long arg)
 {
@@ -689,6 +700,11 @@ static long audio_cal_compat_ioctl(struct file *f,
 		cmd64 = AUDIO_SET_MODE;
 		break;
     //Jacob cherry pick ZE500KL change ---
+    //Rice
+	case AUDIO_SET_FORMAT32:
+		cmd64 = AUDIO_SET_FORMAT;
+		break;
+    //Rice
 	default:
 		pr_err("%s: ioctl not found!\n", __func__);
 		ret = -EFAULT;

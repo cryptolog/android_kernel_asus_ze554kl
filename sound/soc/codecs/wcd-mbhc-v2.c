@@ -348,6 +348,8 @@ out_micb_en:
 		if (mbhc->mbhc_cb->set_micbias_value && !mbhc->micbias_enable)
 			mbhc->mbhc_cb->set_micbias_value(codec);
 		/* Enable PULL UP if PA's are enabled */
+		//Rice
+		#if 0
 		if ((test_bit(WCD_MBHC_EVENT_PA_HPHL, &mbhc->event_state)) ||
 				(test_bit(WCD_MBHC_EVENT_PA_HPHR,
 					  &mbhc->event_state)))
@@ -356,7 +358,12 @@ out_micb_en:
 		else
 			/* enable current source and disable mb, pullup*/
 			wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_CS);
-
+        #endif
+		if (!mbhc->current_plug == MBHC_PLUG_TYPE_HEADSET)
+			wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_CS);
+		else
+			wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_PULLUP);
+		//Rice
 		/* configure cap settings properly when micbias is disabled */
 		if (mbhc->mbhc_cb->set_cap_mode)
 			mbhc->mbhc_cb->set_cap_mode(codec, micbias1, false);
@@ -374,8 +381,13 @@ out_micb_en:
 			/* Disable cs, pullup & enable micbias */
 			wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_MB);
 		else
+		{
 			/* Disable micbias, pullup & enable cs */
-			wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_CS);
+			if (!mbhc->current_plug == MBHC_PLUG_TYPE_HEADSET)
+				wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_CS);
+			else
+				wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_PULLUP);//Rice
+		}
 		mutex_unlock(&mbhc->hphl_pa_lock);
 		break;
 	case WCD_EVENT_PRE_HPHR_PA_OFF:
@@ -391,8 +403,13 @@ out_micb_en:
 			/* Disable cs, pullup & enable micbias */
 			wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_MB);
 		else
+		{
 			/* Disable micbias, pullup & enable cs */
-			wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_CS);
+			if (!mbhc->current_plug == MBHC_PLUG_TYPE_HEADSET)
+				wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_CS);
+			else
+				wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_PULLUP);//Rice
+		}
 		mutex_unlock(&mbhc->hphr_pa_lock);
 		break;
 	case WCD_EVENT_PRE_HPHL_PA_ON:
@@ -1060,15 +1077,19 @@ static void wcd_enable_mbhc_supply(struct wcd_mbhc *mbhc,
 			if (mbhc->is_hs_recording || mbhc->micbias_enable)
 				wcd_enable_curr_micbias(mbhc,
 							WCD_MBHC_EN_MB);
+//Rice
+/*
 			else if ((test_bit(WCD_MBHC_EVENT_PA_HPHL,
 				&mbhc->event_state)) ||
 				(test_bit(WCD_MBHC_EVENT_PA_HPHR,
 				&mbhc->event_state)))
 					wcd_enable_curr_micbias(mbhc,
 							WCD_MBHC_EN_PULLUP);
+*/
 			else
-				wcd_enable_curr_micbias(mbhc,
-							WCD_MBHC_EN_CS);
+				//wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_CS);
+				wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_PULLUP);
+//Rice
 		} else if (plug_type == MBHC_PLUG_TYPE_HEADPHONE) {
 			wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_CS);
 		} else {
@@ -1602,6 +1623,7 @@ static void wcd_mbhc_swch_irq_handler(struct wcd_mbhc *mbhc)
 				mbhc->mbhc_cb->micb_internal(codec, 1, false);
 
 			/* Pulldown micbias */
+            WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_MICB_CTRL, 0);//Rice
 			WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_PULLDOWN_CTRL, 1);
 			wcd_mbhc_hs_elec_irq(mbhc, WCD_MBHC_ELEC_HS_REM,
 					     false);

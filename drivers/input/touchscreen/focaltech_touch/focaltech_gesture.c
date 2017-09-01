@@ -224,9 +224,9 @@ static ssize_t switch_gesture_mode_store(struct device *dev, struct device_attri
 		fts_wq_data->gesture_mode_type = gesturetmp;
 
 		if ((fts_wq_data->gesture_mode_type & 1 << 6))
-			FTS_gesture_register_d6 = 0x11;
+			FTS_gesture_register_d6 = 0x10;
 		else
-			FTS_gesture_register_d6 = 0x01;
+			FTS_gesture_register_d6 = 0x00;
 
 		if ((fts_wq_data->gesture_mode_type & 1 << 5))
 			FTS_gesture_register_d7 = 0x20;

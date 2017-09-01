@@ -30,7 +30,6 @@
 #include "mdss_panel.h"
 #include <linux/kernel.h>
 #include <linux/workqueue.h>
-#include <linux/kernel.h>
 #include <linux/file.h>
 #include <linux/uaccess.h>
 //ASUS BSP Display ---
@@ -56,6 +55,8 @@
 #define PANEL_DEBUG_CMD 0
 #define WLED_MAX_LEVEL_ENABLE 4095
 #define WLED_MIN_LEVEL_DISABLE 0
+#define TM_BL_THRESHOLD 44
+#define BOE_BL_THRESHOLD 11
 
 extern char lcd_unique_id[64];
 extern struct mdss_panel_data *g_mdss_pdata;
@@ -66,6 +67,7 @@ extern bool tcon_cmd_fence;
 void set_tcon_cmd(char *cmd, short len);
 void get_tcon_cmd(char cmd, int rlen);
 static struct mutex cmd_mutex;
+static struct mutex bl_cmd_mutex;
 char dimming_cmd[2] = {0x53, 0x2C};
 char cabc_mode[2] = {0x55, Still_MODE};
 static struct panel_list supp_panels[] = {
@@ -84,6 +86,9 @@ static DEFINE_SPINLOCK(bklt_lock);
 static bool g_timer = false;
 static bool bl_wled_enable = false;
 static int g_previous_bl = 0x0;
+static int g_last_bl = 0x0;
+static int g_bl_threshold;
+static int g_wled_dimming_div;
 static int mdss_first_boot = 1;
 extern int display_commit_cnt;
 extern u32 g_update_bl;
@@ -1136,6 +1141,16 @@ static void mdss_dsi_panel_switch_mode(struct mdss_panel_data *pdata,
 		mdss_dsi_panel_dsc_pps_send(ctrl_pdata, &pdata->panel_info);
 }
 
+static void led_trigger_dim(int from, int to)
+{
+	int temp;
+
+	for (temp=0;temp<=g_wled_dimming_div;temp++) {
+		led_trigger_event(bl_led_trigger, WLED_MAX_LEVEL_ENABLE*from/g_bl_threshold+( (WLED_MAX_LEVEL_ENABLE*(to-from) / g_bl_threshold / g_wled_dimming_div) *temp));
+		msleep(10);
+	}
+}
+
 static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 							u32 bl_level)
 {
@@ -1191,6 +1206,8 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 	/* enable the backlight gpio if present */
 	mdss_dsi_bl_gpio_ctrl(pdata, bl_level);
 
+	mutex_lock(&bl_cmd_mutex);
+
 	switch (ctrl_pdata->bklt_ctrl) {
 	case BL_WLED:
 		led_trigger_event(bl_led_trigger, bl_level);
@@ -1199,37 +1216,59 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 		mdss_dsi_panel_bklt_pwm(ctrl_pdata, bl_level);
 		break;
 	case BL_DCS_CMD:
-		if (bl_level && !bl_wled_enable) {
-			led_trigger_event(bl_led_trigger,WLED_MAX_LEVEL_ENABLE);
-			printk("[Display] %s:: bl_wled_enable ctrl enable\n", __func__);
-			bl_wled_enable = true;
-		} else if (bl_level == 0 && bl_wled_enable) {
-			led_trigger_event(bl_led_trigger,WLED_MIN_LEVEL_DISABLE);
+		if (bl_level == 0) {
+			led_trigger_event(bl_led_trigger, WLED_MIN_LEVEL_DISABLE);
 			printk("[Display] %s:: bl_wled_enable ctrl disable\n", __func__);
+			if (!mdss_dsi_sync_wait_enable(ctrl_pdata))
+				mdss_dsi_panel_bklt_dcs(ctrl_pdata, 0);
 			bl_wled_enable = false;
-		}
-
-		if (!mdss_dsi_sync_wait_enable(ctrl_pdata)) {
-			mdss_dsi_panel_bklt_dcs(ctrl_pdata, bl_level);
-			break;
-		}
-		/*
-		 * DCS commands to update backlight are usually sent at
-		 * the same time to both the controllers. However, if
-		 * sync_wait is enabled, we need to ensure that the
-		 * dcs commands are first sent to the non-trigger
-		 * controller so that when the commands are triggered,
-		 * both controllers receive it at the same time.
-		 */
-		sctrl = mdss_dsi_get_other_ctrl(ctrl_pdata);
-		if (mdss_dsi_sync_wait_trigger(ctrl_pdata)) {
-			if (sctrl)
-				mdss_dsi_panel_bklt_dcs(sctrl, bl_level);
-			mdss_dsi_panel_bklt_dcs(ctrl_pdata, bl_level);
-		} else {
-			mdss_dsi_panel_bklt_dcs(ctrl_pdata, bl_level);
-			if (sctrl)
-				mdss_dsi_panel_bklt_dcs(sctrl, bl_level);
+		} else if (bl_level < g_bl_threshold) { /*wled control*/
+			if (g_last_bl == 0) {
+				printk("%s::[Display] system resume set BL wled directly\n", __func__);
+				led_trigger_event(bl_led_trigger, 4095*bl_level/g_bl_threshold);
+				if (!mdss_dsi_sync_wait_enable(ctrl_pdata))
+					mdss_dsi_panel_bklt_dcs(ctrl_pdata, g_bl_threshold);
+			} else if (bl_level < g_last_bl) {
+				if (!mdss_dsi_sync_wait_enable(ctrl_pdata) && bl_wled_enable)
+					mdss_dsi_panel_bklt_dcs(ctrl_pdata, g_bl_threshold);
+				led_trigger_dim((g_last_bl >= g_bl_threshold)?g_bl_threshold:g_last_bl,bl_level);
+			} else if (g_last_bl < bl_level) {
+				led_trigger_dim(g_last_bl,bl_level);
+			} else
+				printk("%s:: [Display] Bypass backlight request with same level\n", __func__);
+			bl_wled_enable = false;
+		} else { /*dcs control*/
+			if (!mdss_dsi_sync_wait_enable(ctrl_pdata)) {
+				if (g_last_bl == 0) {
+					led_trigger_event(bl_led_trigger, WLED_MAX_LEVEL_ENABLE);
+					printk("[Display] %s:: bl_wled_enable ctrl enable\n", __func__);
+					mdss_dsi_panel_bklt_dcs(ctrl_pdata, bl_level);
+				} else {
+					mdss_dsi_panel_bklt_dcs(ctrl_pdata, bl_level);
+					if (!bl_wled_enable)
+						led_trigger_dim(g_last_bl,g_bl_threshold);
+				}
+				bl_wled_enable = true;
+				break;
+			}
+			/*
+			 * DCS commands to update backlight are usually sent at
+			 * the same time to both the controllers. However, if
+			 * sync_wait is enabled, we need to ensure that the
+			 * dcs commands are first sent to the non-trigger
+			 * controller so that when the commands are triggered,
+			 * both controllers receive it at the same time.
+			 */
+			sctrl = mdss_dsi_get_other_ctrl(ctrl_pdata);
+			if (mdss_dsi_sync_wait_trigger(ctrl_pdata)) {
+				if (sctrl)
+					mdss_dsi_panel_bklt_dcs(sctrl, bl_level);
+				mdss_dsi_panel_bklt_dcs(ctrl_pdata, bl_level);
+			} else {
+				mdss_dsi_panel_bklt_dcs(ctrl_pdata, bl_level);
+				if (sctrl)
+					mdss_dsi_panel_bklt_dcs(sctrl, bl_level);
+			}
 		}
 		break;
 	default:
@@ -1237,6 +1276,8 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 			__func__);
 		break;
 	}
+	g_last_bl = bl_level;
+	mutex_unlock(&bl_cmd_mutex);
 }
 
 static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
@@ -1477,6 +1518,9 @@ void set_tcon_cmd(char *cmd, short len)
     struct dsi_cmd_desc tcon_cmd = {
         {DTYPE_DCS_WRITE1, 1, 0, 0, 1, len}, cmd};
     int i=0;
+
+    if(g_asus_lcdID == AQU_LCD_BOE && len==2 && cmd[0]==0x55 && cmd[1]!=0x0)
+        cmd[1] = cmd[1] | 0x80;
 
     if(len > 2)
         tcon_cmd.dchdr.dtype = DTYPE_GEN_LWRITE;
@@ -3816,6 +3860,7 @@ int mdss_dsi_panel_init(struct device_node *node,
 	pinfo->dynamic_switch_pending = false;
 	pinfo->is_lpm_mode = false;
 	pinfo->esd_rdy = false;
+	pinfo->esd_crash = false;
 	pinfo->persist_mode = false;
 
 	ctrl_pdata->on = mdss_dsi_panel_on;
@@ -3828,17 +3873,28 @@ int mdss_dsi_panel_init(struct device_node *node,
 	ctrl_pdata->switch_mode = mdss_dsi_panel_switch_mode;
 
 	//ASUS_BSP +++
-	if(g_ftm_mode) {
+	if (g_ftm_mode) {
 		printk("%s:: Factory Mode CABC off \n", __func__);
 		cabc_mode[1] = OFF_MODE;
 	}
 	mutex_init(&cmd_mutex);
+	mutex_init(&bl_cmd_mutex);
 	proc_create(CABC_PROC_FILE, 0777, NULL, &cabc_proc_ops);
 	proc_create(LCD_REGISTER_RW, 0640, NULL, &lcd_reg_rw_ops);
 	proc_create(ZE554KL_LCD_UNIQUE_ID, 0444, NULL, &lcd_uniqueID_proc_ops);
 	proc_create(ZE554KL_LCD_ID, 0444, NULL, &lcd_id_proc_ops);
 	proc_create(DUMP_CALIBRATION_INFO, 0666, NULL, &lcd_info_proc_ops);
 	display_workqueue = create_workqueue("display_wq");
+
+	if (g_asus_lcdID == TITAN_LCD_TM) {
+		g_bl_threshold = TM_BL_THRESHOLD;
+		g_wled_dimming_div = 10;
+		printk("%s:: TM g_bl_threshold(%d) g_wled_dimming_div(%d)\n", __func__, g_bl_threshold, g_wled_dimming_div);
+	} else {
+		g_bl_threshold = BOE_BL_THRESHOLD;
+		g_wled_dimming_div = 10;
+		printk("%s:: BOE g_bl_threshold(%d) g_wled_dimming_div(%d)\n", __func__, g_bl_threshold, g_wled_dimming_div);
+	}
 	//ASUS_BSP ---
 
 	return 0;

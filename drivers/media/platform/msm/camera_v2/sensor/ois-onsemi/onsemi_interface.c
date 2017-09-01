@@ -1562,6 +1562,29 @@ Error:
 	kfree(fw_code_data);
 	return rc;
 }
+
+//ASUS_BSP Lucien +++: Replace update ois fw after reading vcm data
+int onsemi_update_fw_from_eeprom(struct msm_ois_ctrl_t *ctrl, uint32_t mode, uint8_t vcm)
+{
+	int rc = 0;
+	uint32_t fw_version = 0;
+	pr_info("%s: E\n",__func__);
+	rc = onsemi_read_dword(ctrl,0x8000,&fw_version);
+	if(rc < 0)
+	{
+		pr_err("%s: Read firmware version failed\n", __func__);
+		return rc;
+	}
+
+	rc = msm_ois_check_update_fw(ctrl, mode, fw_version, vcm);
+	if(rc < 0) pr_err("%s: onsemi_update_fw_from_eeprom failed\n", __func__);
+
+	pr_info("%s: X\n",__func__);
+
+	return 0;
+}
+//ASUS_BSP Lucien ---: Replace update ois fw after reading vcm data
+
 typedef struct
 {
 	uint16_t reg_addr;

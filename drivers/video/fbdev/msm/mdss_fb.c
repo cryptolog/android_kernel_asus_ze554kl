@@ -1650,13 +1650,30 @@ static int mdss_fb_resume(struct platform_device *pdev)
 static int mdss_fb_pm_suspend(struct device *dev)
 {
 	struct msm_fb_data_type *mfd = dev_get_drvdata(dev);
+	int rc = 0;
 
 	if (!mfd)
 		return -ENODEV;
 
 	dev_dbg(dev, "display pm suspend\n");
 
-	return mdss_fb_suspend_sub(mfd);
+	rc = mdss_fb_suspend_sub(mfd);
+
+	/*
+	 * Call MDSS footswitch control to ensure GDSC is
+	 * off after pm suspend call. There are cases when
+	 * mdss runtime call doesn't trigger even when clock
+	 * ref count is zero after fb pm suspend.
+	 */
+	if (!rc) {
+		if (mfd->mdp.footswitch_ctrl)
+			mfd->mdp.footswitch_ctrl(false);
+	} else {
+		pr_err("fb pm suspend failed, rc: %d\n", rc);
+	}
+
+	return rc;
+
 }
 
 static int mdss_fb_pm_resume(struct device *dev)
@@ -1675,6 +1692,9 @@ static int mdss_fb_pm_resume(struct device *dev)
 	pm_runtime_disable(dev);
 	pm_runtime_set_suspended(dev);
 	pm_runtime_enable(dev);
+
+	if (mfd->mdp.footswitch_ctrl)
+		mfd->mdp.footswitch_ctrl(true);
 
 	return mdss_fb_resume_sub(mfd);
 }
@@ -4686,11 +4706,22 @@ static int mdss_fb_atomic_commit_ioctl(struct fb_info *info,
 	struct mdp_output_layer __user *output_layer_user;
 	struct mdp_destination_scaler_data *ds_data = NULL;
 	struct mdp_destination_scaler_data __user *ds_data_user;
+	struct msm_fb_data_type *mfd;
 
 	ret = copy_from_user(&commit, argp, sizeof(struct mdp_layer_commit));
 	if (ret) {
 		pr_err("%s:copy_from_user failed\n", __func__);
 		return ret;
+	}
+
+	mfd = (struct msm_fb_data_type *)info->par;
+	if (!mfd)
+		return -EINVAL;
+
+	if (mfd->panel_info->panel_dead) {
+		pr_debug("early commit return\n");
+		MDSS_XLOG(mfd->panel_info->panel_dead);
+		return 0;
 	}
 
 	output_layer_user = commit.commit_v1.output_layer;

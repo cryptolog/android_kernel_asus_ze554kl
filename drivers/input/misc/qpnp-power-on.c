@@ -43,9 +43,9 @@ extern char evtlog_warm_reset_reason[100];
 #include <linux/input/qpnp-power-on.h>
 #include <linux/power_supply.h>
 
-// ASUS_BSP_joe1++
+
 #include <linux/ktime.h>
-// ASUS_BSP_joe1--
+
 
 /*ASUS freddy Porting Debug*/
 unsigned int pwr_keycode ;
@@ -228,7 +228,7 @@ struct qpnp_pon {
 	int			pon_power_off_reason;
 	int			num_pon_reg;
 	int			num_pon_config;
-	u32			dbc;
+	u32			dbc_time_us;
 	u32			uvlo;
 	int			warm_reset_poff_type;
 	int			hard_reset_poff_type;
@@ -240,6 +240,8 @@ struct qpnp_pon {
 	u8			warm_reset_reason2;
 	bool			is_spon;
 	bool			store_hard_reset_reason;
+	bool			kpdpwr_dbc_enable;
+	ktime_t			kpdpwr_last_release_time;
 };
 
 static int pon_ship_mode_en;
@@ -247,14 +249,7 @@ module_param_named(
 	ship_mode_en, pon_ship_mode_en, int, 0600
 );
 //ASUS_BSP_joe1_++
-#define POWERKEY_SW_DEBOUNCE
 
-#ifdef POWERKEY_SW_DEBOUNCE 
-static s64 g_prev_time = 0;
-static long g_filter = 50; //ms
-module_param(g_filter, long, S_IRUGO|S_IWUSR);
-#endif
-//ASUS_BSP_joe1_--
 
 static struct qpnp_pon *sys_reset_dev;
 static DEFINE_SPINLOCK(spon_list_slock);
@@ -470,7 +465,7 @@ static int qpnp_pon_set_dbc(struct qpnp_pon *pon, u32 delay)
 	int rc = 0;
 	u32 val;
 
-	if (delay == pon->dbc)
+	if (delay == pon->dbc_time_us)
 		goto out;
 
 	if (pon->pon_input)
@@ -498,7 +493,7 @@ static int qpnp_pon_set_dbc(struct qpnp_pon *pon, u32 delay)
 		goto unlock;
 	}
 
-	pon->dbc = delay;
+	pon->dbc_time_us = delay;
 
 unlock:
 	if (pon->pon_input)
@@ -507,12 +502,34 @@ out:
 	return rc;
 }
 
+static int qpnp_pon_get_dbc(struct qpnp_pon *pon, u32 *delay)
+{
+	int rc;
+	unsigned int val;
+
+	rc = regmap_read(pon->regmap, QPNP_PON_DBC_CTL(pon), &val);
+	if (rc) {
+		pr_err("Unable to read pon_dbc_ctl rc=%d\n", rc);
+		return rc;
+	}
+	val &= QPNP_PON_DBC_DELAY_MASK(pon);
+
+	if (is_pon_gen2(pon))
+		*delay = USEC_PER_SEC /
+			(1 << (QPNP_PON_GEN2_DELAY_BIT_SHIFT - val));
+	else
+		*delay = USEC_PER_SEC /
+			(1 << (QPNP_PON_DELAY_BIT_SHIFT - val));
+
+	return rc;
+}
+
 static ssize_t qpnp_pon_dbc_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
 	struct qpnp_pon *pon = dev_get_drvdata(dev);
 
-	return snprintf(buf, QPNP_PON_BUFFER_SIZE, "%d\n", pon->dbc);
+	return snprintf(buf, QPNP_PON_BUFFER_SIZE, "%d\n", pon->dbc_time_us);
 }
 
 static ssize_t qpnp_pon_dbc_store(struct device *dev,
@@ -1176,12 +1193,9 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 	u8  pon_rt_bit = 0;
 	u32 key_status;
 	uint pon_rt_sts;
-//ASUS_BSP_joe1_++
-#ifdef POWERKEY_SW_DEBOUNCE 
-	s64 interval;
-	static int iCount = 0;
-#endif
-//ASUS_BSP_joe1_--
+
+	u64 elapsed_us;
+
 
 	cfg = qpnp_get_cfg(pon, pon_type);
 	if (!cfg)
@@ -1190,6 +1204,15 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 	/* Check if key reporting is supported */
 	if (!cfg->key_code)
 		return 0;
+
+	if (pon->kpdpwr_dbc_enable && cfg->pon_type == PON_KPDPWR) {
+		elapsed_us = ktime_us_delta(ktime_get(),
+				pon->kpdpwr_last_release_time);
+		if (elapsed_us < pon->dbc_time_us) {
+			pr_debug("Ignoring kpdpwr event - within debounce time\n");
+			return 0;
+		}
+	}
 
 	/* check the RT status to get the current status of the line */
 	rc = regmap_read(pon->regmap, QPNP_PON_RT_STS(pon), &pon_rt_sts);
@@ -1240,62 +1263,29 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 	printk("[Keys][qpnp-power-on.c] keycode=%d, state=%s\n",
 			cfg->key_code, key_status?"press":"release"); //ASUS BSP Vincent +++
  
-//ASUS_BSP_joe1_++
-#ifdef POWERKEY_SW_DEBOUNCE 
-	interval = (ktime_to_ms(ktime_get()) - g_prev_time);
 
-	printk("[joe1][qpnp-power-on.c] interval = %d ms\n", (int)interval);
 
-	if ( interval < g_filter )
-	{
-		if ( key_status )
-		{
-			printk("[joe1][qpnp-power-on.c] The key event is skipped! g_filter = %d ms; interval = %d ms\n", (int)g_filter, (int)interval);
-			return 0;
-		}
+	if (pon->kpdpwr_dbc_enable && cfg->pon_type == PON_KPDPWR) {
+		if (!key_status)
+			pon->kpdpwr_last_release_time = ktime_get();
 	}
-
-	if ( (cfg->old_state == key_status) && (iCount < 3) )
-	{
-		printk("[joe1][qpnp-power-on.c] Skip the invalid key status!cfg->old_state=%d; key_status=%d; iCount=%d\n", cfg->old_state, key_status, iCount);
-
-		iCount++;
-
-		cfg->old_state = !!key_status;
-
-		return 0;
-	}
-	else
-	{
-		iCount = 0;
-	}
-#endif
-//ASUS_BSP_joe1_--
 
 	/*
 	 * simulate press event in case release event occurred
 	 * without a press event
 	 */
-//ASUS_BSP_joe1_++
-#ifndef POWERKEY_SW_DEBOUNCE 	 
+ 
 	if (!cfg->old_state && !key_status) {
 		input_report_key(pon->pon_input, cfg->key_code, 1);
 		input_sync(pon->pon_input);
 	}
-#endif
-//ASUS_BSP_joe1_--
+
 	input_report_key(pon->pon_input, cfg->key_code, key_status);
 	input_sync(pon->pon_input);
 
 	cfg->old_state = !!key_status;
 	
-//ASUS_BSP_joe1_++
-#ifdef POWERKEY_SW_DEBOUNCE 
-	g_prev_time = ktime_to_ms(ktime_get());
 
-	printk("[joe1][qpnp-power-on.c] cfg->old_state =%d; g_prev_time\n", cfg->old_state);
-#endif
-//ASUS_BSP_joe1_--
 
 	return 0;
 }
@@ -2736,7 +2726,21 @@ static int qpnp_pon_probe(struct platform_device *pdev)
 		}
 	} else {
 		rc = qpnp_pon_set_dbc(pon, delay);
+		if (rc) {
+			dev_err(&pdev->dev,
+				"Unable to set PON debounce delay rc=%d\n", rc);
+			return rc;
+		}
 	}
+	rc = qpnp_pon_get_dbc(pon, &pon->dbc_time_us);
+	if (rc) {
+		dev_err(&pdev->dev,
+			"Unable to get PON debounce delay rc=%d\n", rc);
+		return rc;
+	}
+
+	pon->kpdpwr_dbc_enable = of_property_read_bool(pon->pdev->dev.of_node,
+					"qcom,kpdpwr-sw-debounce");
 
 	rc = of_property_read_u32(pon->pdev->dev.of_node,
 				"qcom,warm-reset-poweroff-type",

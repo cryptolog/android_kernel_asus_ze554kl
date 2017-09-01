@@ -154,7 +154,7 @@ static struct wcd_mbhc_register
 			  MSM89XX_PMIC_ANALOG_MBHC_ZDET_ELECT_RESULT, 0xFF,
 			  0, 0),
 	WCD_MBHC_REGISTER("WCD_MBHC_MICB_CTRL",
-			  MSM89XX_PMIC_ANALOG_MICB_2_EN, 0x80, 6, 0),
+			  MSM89XX_PMIC_ANALOG_MICB_2_EN, 0xC0, 6, 0),
 	WCD_MBHC_REGISTER("WCD_MBHC_HPH_CNP_WG_TIME",
 			  MSM89XX_PMIC_ANALOG_RX_HPH_CNP_WG_TIME, 0xFC, 2, 0),
 	WCD_MBHC_REGISTER("WCD_MBHC_HPHR_PA_EN",
@@ -3832,7 +3832,6 @@ static int msm_anlg_cdc_device_up(struct snd_soc_codec *codec)
 {
 	struct sdm660_cdc_priv *sdm660_cdc_priv =
 		snd_soc_codec_get_drvdata(codec);
-	int ret = 0;
 
 	dev_dbg(codec->dev, "%s: device up!\n", __func__);
 
@@ -3853,21 +3852,6 @@ static int msm_anlg_cdc_device_up(struct snd_soc_codec *codec)
 		msm_anlg_cdc_boost_on(codec);
 	else if (sdm660_cdc_priv->boost_option == BYPASS_ALWAYS)
 		msm_anlg_cdc_bypass_on(codec);
-
-	msm_anlg_cdc_configure_cap(codec, false, false);
-	wcd_mbhc_stop(&sdm660_cdc_priv->mbhc);
-	wcd_mbhc_deinit(&sdm660_cdc_priv->mbhc);
-	/* Disable mechanical detection and set type to insertion */
-	snd_soc_update_bits(codec, MSM89XX_PMIC_ANALOG_MBHC_DET_CTL_1,
-			    0xA0, 0x20);
-	ret = wcd_mbhc_init(&sdm660_cdc_priv->mbhc, codec, &mbhc_cb,
-			    &intr_ids, wcd_mbhc_registers, true);
-	if (ret)
-		dev_err(codec->dev, "%s: mbhc initialization failed\n",
-			__func__);
-	else
-		wcd_mbhc_start(&sdm660_cdc_priv->mbhc,
-			sdm660_cdc_priv->mbhc.mbhc_cfg);
 
 	return 0;
 }

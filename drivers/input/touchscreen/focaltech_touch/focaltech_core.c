@@ -72,6 +72,8 @@ u8 FTS_gesture_register_d7;
 //struct wake_lock ps_lock1;
 extern int g_asus_lcdID;
 extern void asus_psensor_disable_touch(bool enable);
+extern bool g_FP_Disable_Touch ;
+extern int get_audiomode(void);
 
 unsigned char IC_FW;
 u8 g_vendor_id = 0xFF;
@@ -81,9 +83,11 @@ int g_focal_touch_init_status = 0;
 EXPORT_SYMBOL(g_focal_touch_init_status);
 
 bool disable_tp_flag;
+extern int HALLsensor_gpio_value(void);
 EXPORT_SYMBOL(disable_tp_flag);
-
-
+static bool hall_sensor_detect = false;
+static bool key_already_down = false;
+static bool once_key_event = false;
 
 #if FTS_DEBUG_EN
 int g_show_log = 1;
@@ -218,6 +222,7 @@ void ftxxxx_disable_touch(bool flag)
 	if (g_focal_touch_init_status == 1){
 		if (flag) {
 			disable_tp_flag = true;
+			fts_release_all_finger();
 			printk("[Focal][Touch] %s: proximity trigger disable touch !\n", __func__);
 		} else {
 			disable_tp_flag = false;
@@ -523,13 +528,36 @@ static int fts_input_dev_report_key_event(struct ts_event *event, struct fts_ts_
         if ( (1 == event->touch_point || 1 == event->point_num) &&
              (event->au16_y[0] == data->pdata->key_y_coord))
         {
-
+			if (g_FP_Disable_Touch == 1){
+				printk("[focal][touch] fp disable touch \n");
+				for (i = 0; i < data->pdata->key_number; i++)
+                {
+                    input_report_key(data->input_dev, data->pdata->keys[i], 0);
+					once_key_event = false;
+                }
+				input_sync(data->input_dev);
+				return 0;
+			}
             if (event->point_num == 0)
             {
                 FTS_DEBUG("Keys All Up!");
                 for (i = 0; i < data->pdata->key_number; i++)
                 {
-                    input_report_key(data->input_dev, data->pdata->keys[i], 0);
+					if (hall_sensor_detect)
+						msleep(20);
+					if ((HALLsensor_gpio_value() > 0) || (key_already_down == true))
+					{
+						input_report_key(data->input_dev, data->pdata->keys[i], 0);
+						once_key_event = false;
+						printk("[focal][touch] send keycode = %d All UP\n", data->pdata->keys[i]);
+						if (i == (data->pdata->key_number - 1))
+							key_already_down = false;
+					}
+					else
+					{
+						hall_sensor_detect = true;
+						printk("[focal][touch] disable VK due to hall sensor CLOSE\n");
+					}
                 }
             }
             else
@@ -543,14 +571,42 @@ static int fts_input_dev_report_key_event(struct ts_event *event, struct fts_ts_
                         if (event->au8_touch_event[i]== 0 ||
                             event->au8_touch_event[i] == 2)
                         {
-                            input_report_key(data->input_dev, data->pdata->keys[i], 1);
-                            FTS_DEBUG("Key%d(%d, %d) DOWN!", i, event->au16_x[0], event->au16_y[0]);
+							if (hall_sensor_detect)
+							msleep(20);
+							if (HALLsensor_gpio_value() > 0)
+							{
+								if(once_key_event == false){
+								input_report_key(data->input_dev, data->pdata->keys[i], 1);
+								key_already_down = true;
+								once_key_event = true;
+								FTS_DEBUG("Key%d(%d, %d) DOWN!", i, event->au16_x[0], event->au16_y[0]);
+								printk("[focal][touch] send keycode = %d DOWN\n", data->pdata->keys[i]);
+								}
+							}
+							else
+							{
+								hall_sensor_detect = true;
+								printk("[focal][touch] disable VK due to hall sensor CLOSE\n");
+							}
                         }
                         else
                         {
-                            input_report_key(data->input_dev, data->pdata->keys[i], 0);
-                            FTS_DEBUG("Key%d(%d, %d) Up!", i, event->au16_x[0], event->au16_y[0]);
-                        }
+							if (hall_sensor_detect)
+							msleep(20);
+							if ((HALLsensor_gpio_value() > 0) || (key_already_down == true))
+							{
+								input_report_key(data->input_dev, data->pdata->keys[i], 0);
+								FTS_DEBUG("Key%d(%d, %d) Up!", i, event->au16_x[0], event->au16_y[0]);
+								printk("[focal][touch] send keycode = %d UP\n", data->pdata->keys[i]);
+							    key_already_down = false;
+								once_key_event = false;
+							}
+							else
+							{
+								hall_sensor_detect = true;
+								printk("[focal][touch] disable VK due to hall sensor CLOSE\n");
+							}
+						}
                         break;
                     }
                 }
@@ -1636,6 +1692,10 @@ static int fts_ts_probe(struct i2c_client *client, const struct i2c_device_id *i
 
   	if (g_asus_lcdID == 1){
 		pr_err("[FTS][Touch] lcdid = %d is synaptic touch \n",g_asus_lcdID);
+		return 0;
+		}
+	if (g_asus_lcdID == 0){
+		pr_err("[FTS][Touch] lcdid = %d no input touch \n",g_asus_lcdID);
 		return 0;
 		}
 	pr_err("[FTS][tocuh]fts_ts_probe! \n");

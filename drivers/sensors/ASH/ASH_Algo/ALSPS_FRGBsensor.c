@@ -739,7 +739,7 @@ mutex_lock(&g_alsps_frgb_lock);
 			log("[Polling] Front RGB Sensor Report raw , red=%d, green=%d, blue=%d, ir=%d\n", red, green, blue, ir);
 		}
 
-		if ((0 == red || 0 == green || 0 == blue || 0 == ir) && (count < 24) && (!rgb_first_data_ready)) {
+		if ((0 == red || 0 == green || 0 == blue || 0 == ir) && (count < 15) && (!rgb_first_data_ready)) {
 			queue_delayed_work(ALSPS_FRGB_delay_workqueue, &FRGB_polling_raw_work, msecs_to_jiffies(FRGB_POLLING_FIRST_RAW));
 			count++;
 		} else {
@@ -892,7 +892,7 @@ int mproximity_store_calibration_lo(int calvalue)
 int mproximity_show_calibration_inf(void)
 {
 	int calvalue;
-	calvalue = g_ps_data->g_ps_calvalue_inf;
+	calvalue = psensor_factory_read_inf();
 	dbg("Proximity show Inf Calibration: %d\n", calvalue);
 	return calvalue;
 }

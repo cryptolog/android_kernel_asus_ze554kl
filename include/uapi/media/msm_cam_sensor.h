@@ -372,7 +372,6 @@ enum msm_ois_cfg_type_t {
 	CFG_OIS_CONTROL,
 	CFG_OIS_I2C_WRITE_SEQ_TABLE,
 	CFG_OIS_I2C_WRITE_MODE,  /*ASUS_BSP bill_chen "Implement ois command for dit 3A"*/
-	CFG_OIS_I2C_UPDATE_FW, //ASUS_BSP Lucien +++: Implement read vcm info from EEPROM
 };
 
 enum msm_ois_cfg_download_type_t {

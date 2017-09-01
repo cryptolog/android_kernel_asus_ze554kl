@@ -663,16 +663,37 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 			//printk("lowmemorykiller: Don't kill media when min_socre_adj > 300\n");
 			continue;
 		}
-		if(strstr(p->comm,"contacts") != NULL && min_score_adj > 200){
-	             task_unlock(p);
-	             //printk("lowmemorykiller: Don't kill contacts when min_socre_adj > 200\n");
-	             continue;
-	      }
-		if(strstr(p->comm,"asusincallui") != NULL && min_score_adj > 200){
-	             task_unlock(p);
-	             //printk("lowmemorykiller: Don't kill asusincall when min_socre_adj > 200\n");
-	             continue;
+		
+		//Skip phone related proc. 
+		if(strstr(p->comm,"android.gm") != NULL){
+		    if( (get_mm_rss(p->mm) * (long)PAGE_SIZE / 1048576) < 110 && min_score_adj > 300){
+			if(strstr(p->comm,"android.gms") != NULL){
+			} else {
+			    task_unlock(p);
+			    //printk("lowmemorykiller: ***success*** Don't kill %s, when size = %lu (<60) \n", p->comm, get_mm_rss(p->mm) * (long)PAGE_SIZE / 1048576);
+			    continue;
+			}
+		    } else {
+			//printk("lowmemorykiller: ***fail*** Don't kill %s, when size = %lu (<60) \n", p->comm, get_mm_rss(p->mm) * (long)PAGE_SIZE / 1048576);
+		    }
 		}
+		if(strstr(p->comm,"katana") != NULL || strstr(p->comm,"line.android") != NULL){
+		    if(get_mm_rss(p->mm) * (long)PAGE_SIZE / 1048576 < 150 && min_score_adj > 300){
+			if(strstr(p->comm,"katana:")){
+			} else {
+			    task_unlock(p);
+			    //printk("lowmemorykiller: ***success*** Don't kill %s, when size = %lu (<80)\n", p->comm, get_mm_rss(p->mm) * (long)PAGE_SIZE / 1048576);
+			    continue;
+			}
+		    } else {
+			//printk("lowmemorykiller: ***fail*** Don't kill %s, when size = %lu (<80)\n", p->comm, get_mm_rss(p->mm) * (long)PAGE_SIZE / 1048576);
+		    }
+                }
+		if(strstr(p->comm,"contacts") != NULL && min_score_adj > 200){
+                    task_unlock(p);
+                    //printk("lowmemorykiller: Don't kill contacts when min_socre_adj > 200\n");
+                    continue;
+                }
 
 		if (oom_score_adj < min_score_adj) {
 			task_unlock(p);

@@ -171,7 +171,7 @@
  * FW_APP.i file for upgrade
  * define your own fw_app, the sample one is invalid
  */
-#define FTS_UPGRADE_FW_APP                      "include/firmware/ASUS_TITAN_V0x44_app.i"
+#define FTS_UPGRADE_FW_APP                      "include/firmware/ASUS_TITAN_V0x60_app.i"
 
 /*
  * auto upgrade with app.bin in sdcard

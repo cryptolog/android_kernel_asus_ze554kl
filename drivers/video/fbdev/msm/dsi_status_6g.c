@@ -183,8 +183,10 @@ void mdss_check_dsi_ctrl_status(struct work_struct *work, uint32_t interval)
 			goto status_dead;
 	}
 
+	pdata->panel_info.esd_crash = false;
 	return;
 
 status_dead:
+	pdata->panel_info.esd_crash = true;
 	mdss_fb_report_panel_dead(pstatus_data->mfd);
 }

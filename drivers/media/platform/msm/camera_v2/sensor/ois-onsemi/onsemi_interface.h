@@ -103,6 +103,9 @@ int onsemi_read_user_data(struct msm_ois_ctrl_t *ctrl,uint16_t reg_offset,uint8_
 
 int onsemi_update_fw(struct msm_ois_ctrl_t *ctrl, const char *file_path);
 int onsemi_update_parameter_for_updating_fw(struct msm_ois_ctrl_t *ctrl);
+//ASUS_BSP Lucien +++: Replace update ois fw after reading vcm data
+int onsemi_update_fw_from_eeprom(struct msm_ois_ctrl_t *ctrl, uint32_t mode, uint8_t vcm);
+//ASUS_BSP Lucien ---: Replace update ois fw after reading vcm data
 
 int onsemi_ssc_go_on(struct msm_ois_ctrl_t *ctrl);
 int onsemi_ssc_go_off(struct msm_ois_ctrl_t *ctrl);

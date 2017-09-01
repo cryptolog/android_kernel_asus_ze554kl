@@ -156,22 +156,22 @@ static ssize_t fts_touch_cover_store(struct device *dev, struct device_attribute
 
 	if (FTS_SYSFS_ECHO_ON(buf))
     {
-        if (!g_fts_mode_flag.fts_cover_mode_flag)
+        if ((!g_fts_mode_flag.fts_cover_mode_flag) && (!g_fts_mode_flag.fts_glove_mode_flag))
 		{
 			FTS_INFO("[Mode]enter cover mode");
             g_fts_mode_flag.fts_cover_mode_flag = true;
 			fts_wq_data->cover_mode_eable = 1;
-            ret = fts_enter_cover_mode(fts_i2c_client,true);
+            ret = fts_enter_glove_mode(fts_i2c_client,true);
         }
 	}
 	else if (FTS_SYSFS_ECHO_OFF(buf))
     {
-        if (g_fts_mode_flag.fts_cover_mode_flag)
+        if ((g_fts_mode_flag.fts_cover_mode_flag) && (!g_fts_mode_flag.fts_glove_mode_flag))
 		{
 			FTS_INFO("[Mode]exit cover mode");
             g_fts_mode_flag.fts_cover_mode_flag = false;
 			fts_wq_data->cover_mode_eable =0 ;
-            ret = fts_enter_cover_mode(fts_i2c_client,false);
+            ret = fts_enter_glove_mode(fts_i2c_client,false);
         }
     }
     return count;
@@ -391,8 +391,8 @@ int fts_ex_mode_recovery(struct i2c_client *client)
 #endif
 
 #if FTS_COVER_EN
-    if (g_fts_mode_flag.fts_cover_mode_flag)
-        ret = fts_enter_cover_mode(client, true);
+    if ((g_fts_mode_flag.fts_cover_mode_flag) && (!g_fts_mode_flag.fts_glove_mode_flag))
+        ret = fts_enter_glove_mode(client, true);
 #endif
 
 #if FTS_CHARGER_EN

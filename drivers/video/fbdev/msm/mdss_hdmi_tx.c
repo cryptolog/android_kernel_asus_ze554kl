@@ -4771,6 +4771,7 @@ static int hdmi_tx_probe(struct platform_device *pdev)
 		rc = -ENODEV;
 		return rc;
 	}
+    return rc; //ASUS_BSP_Display
 
 	hdmi_ctrl = devm_kzalloc(&pdev->dev, sizeof(*hdmi_ctrl), GFP_KERNEL);
 	if (!hdmi_ctrl) {

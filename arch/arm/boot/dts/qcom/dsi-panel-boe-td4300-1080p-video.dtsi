@@ -42,23 +42,23 @@
 		qcom,mdss-dsi-underflow-color = <0xff>;
 		qcom,mdss-dsi-border-color = <0>;
 		qcom,mdss-dsi-on-command = [
-                    05 01 00 00 46 00 02 11 00
+                    05 01 00 00 50 00 02 11 00
                     29 01 00 00 00 00 02 B0 04
                     29 01 00 00 00 00 2E C1 84 08 00 FF FF 2F 7F BC 4A 99 F3 D4 67 CD B9 C6 BE 02 C7 28 75 C5 1F FF FF 0F 00 00 00 00 00 00 00 00 40 00 22 03 02 03 82 00 01 00 01
-                    29 01 00 00 00 00 12 CB D0 BF DF BF 00 00 23 40 0C 00 D0 1C 80 B3 00 00 40
-                    05 01 00 00 78 00 02 29 00
+                    29 01 00 00 0a 00 12 CB D0 BF DF BF 00 00 23 40 0C 00 D0 1C 80 B3 00 00 40
+                    05 01 00 00 0a 00 02 29 00
                     39 01 00 00 00 00 02 51 00
                     39 01 00 00 00 00 02 53 24
                     39 01 00 00 00 00 02 55 00];
 		qcom,mdss-dsi-cabc-on-command = [
-                    05 01 00 00 46 00 02 11 00
+                    05 01 00 00 50 00 02 11 00
                     29 01 00 00 00 00 02 B0 04
                     29 01 00 00 00 00 2E C1 84 08 00 FF FF 2F 7F BC 4A 99 F3 D4 67 CD B9 C6 BE 02 C7 28 75 C5 1F FF FF 0F 00 00 00 00 00 00 00 00 40 00 22 03 02 03 82 00 01 00 01
-                    29 01 00 00 00 00 12 CB D0 BF DF BF 00 00 23 40 0C 00 D0 1C 80 B3 00 00 40
-                    05 01 00 00 78 00 02 29 00
+                    29 01 00 00 0a 00 12 CB D0 BF DF BF 00 00 23 40 0C 00 D0 1C 80 B3 00 00 40
+                    05 01 00 00 0a 00 02 29 00
                     39 01 00 00 00 00 02 51 00
                     39 01 00 00 00 00 02 53 24
-                    39 01 00 00 00 00 02 55 02];
+                    39 01 00 00 00 00 02 55 82];
 		qcom,mdss-dsi-off-command = [05 01 00 00 14 00 02 28 00
                     29 01 00 00 00 00 02 B0 00
                     29 01 00 00 00 00 2E C1 84 08 00 FF FF AF BE 52 4A 19 A5 D4 57 4A 29 A5 BE 52 CA 28 A5 D4 57 FF FF 0F 00 00 00 00 00 00 00 00 40 00 22 03 02 03 82 00 01 00 01
@@ -77,10 +77,16 @@
 		qcom,mdss-dsi-lane-2-state;
 		qcom,mdss-dsi-lane-3-state;
 		qcom,mdss-dsi-lp11-init;
+                qcom,esd-check-enabled;
+                qcom,mdss-dsi-panel-status-check-mode = "reg_read";
+                qcom,mdss-dsi-panel-status-command = [06 01 00 01 05 00 02 0A 00];
+                qcom,mdss-dsi-panel-status-command-state = "dsi_lp_mode";
+                qcom,mdss-dsi-panel-status-read-length = <1>;
+                qcom,mdss-dsi-panel-status-value = <0x1c>;
 		qcom,mdss-dsi-panel-timings = [E6 38 26 00 68 6c 2A 3C 2C 03 04 00];
 		qcom,mdss-dsi-t-clk-post = <0x0D>;
 		qcom,mdss-dsi-t-clk-pre = <0x2D>;
-		qcom,mdss-dsi-bl-min-level = <3>;
+		qcom,mdss-dsi-bl-min-level = <2>;
 		qcom,mdss-dsi-bl-max-level = <255>;
 		qcom,mdss-dsi-dma-trigger = "trigger_sw";
 		qcom,mdss-dsi-mdp-trigger = "none";

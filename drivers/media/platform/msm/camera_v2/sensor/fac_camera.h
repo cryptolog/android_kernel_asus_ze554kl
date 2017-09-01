@@ -138,5 +138,6 @@ int read_otp_asus(int sensor_id, int cameraID);
  int create_rear_resolution_proc_file(int cameraID);
  int create_front_resolution_proc_file(void);
  void remove_resolution_file(void); //resolution
+ extern int32_t ois_read_rear_vcm_version(uint32_t mode, uint8_t vcm); //ASUS_BSP Lucien +++: Replace update ois fw after reading vcm data
 
 #endif

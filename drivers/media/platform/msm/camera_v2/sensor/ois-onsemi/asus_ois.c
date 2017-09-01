@@ -1611,6 +1611,21 @@ static const struct file_operations ois_update_fw_proc_fops = {
 	.write		= ois_update_fw_write,
 };
 
+//ASUS_BSP Lucien +++: Replace update ois fw after reading vcm data
+int32_t ois_read_rear_vcm_version(uint32_t mode, uint8_t vcm)
+{
+	int rc = 0;
+	mutex_lock(ois_ctrl->ois_mutex);
+	pr_info("%s: ois ois_read_rear_vcm_version 0x%x!\n", __func__, vcm);
+
+	rc = onsemi_update_fw_from_eeprom(ois_ctrl, mode, vcm);
+	if(rc < 0) pr_err("%s: onsemi_update_fw_from_eeprom failed\n", __func__);
+	mutex_unlock(ois_ctrl->ois_mutex);
+
+	return rc;
+}
+//ASUS_BSP Lucien ---: Replace update ois fw after reading vcm data
+
 static void create_proc_file(const char *PATH,const struct file_operations* f_ops)
 {
 	struct proc_dir_entry *fd;

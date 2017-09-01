@@ -30,11 +30,12 @@
 #include "usbpd.h"
 
 #ifdef CONFIG_ASUS_PD_CHARGER
-#define ASUS_PD_MAX_INPUT_VOL_CFG 9000000	// 9V
-#define ASUS_PD_MID_INPUT_VOL_CFG 7500000	// 7.5V
-#define ASUS_PD_MIN_INPUT_VOL_CFG 5000000	// 5V
+#define ASUS_PD_INPUT_VOL_CFG_9V 9000000	// 9V
+#define ASUS_PD_INPUT_VOL_CFG_7_5V 7500000	// 7.5V
+#define ASUS_PD_INPUT_VOL_CFG_5V 5000000	// 5V
 #define ASUS_PD_ICL_CUR_CFG_3A 3000000		// 3A
 #define ASUS_PD_ICL_CUR_CFG_2A 2000000		// 2A
+#define ASUS_PD_ICL_CUR_CFG_1_67A 1670000	// 1.67A
 #define ASUS_PD_ICL_CUR_CFG_1_5A 1500000	// 1.5A
 #endif
 
@@ -568,6 +569,7 @@ static int pd_eval_src_caps_asus(struct usbpd *pd)
 	int i = 0, index = 0;
 	int cur_mw = 0, cur_uv = 0, cur_ua = 0;
 	int pre_mw = 0, pre_uv = 0, pre_ua = 0;
+	int pdo_candidate = 0, pdo_candidate_9v = 0;
 
 	for (i = 0; i < pd->src_cap_cnt; i++) {
 		if (PD_SRC_PDO_TYPE(pd->received_pdos[i]) != PD_SRC_PDO_TYPE_FIXED) {
@@ -578,21 +580,52 @@ static int pd_eval_src_caps_asus(struct usbpd *pd)
 		cur_uv = PD_SRC_PDO_FIXED_VOLTAGE(pd->received_pdos[i]) * 50 * 1000;
 		cur_ua = PD_SRC_PDO_FIXED_MAX_CURR(pd->received_pdos[i]) * 10 * 1000;
 
-		if (ASUS_PD_MIN_INPUT_VOL_CFG == cur_uv) {
+		if (ASUS_PD_INPUT_VOL_CFG_5V == cur_uv) {
 			cur_ua = (cur_ua > ASUS_PD_ICL_CUR_CFG_3A) ? ASUS_PD_ICL_CUR_CFG_3A : cur_ua;
-		} else if (cur_uv > ASUS_PD_MIN_INPUT_VOL_CFG && cur_uv <= ASUS_PD_MID_INPUT_VOL_CFG) {
+		} else if (cur_uv > ASUS_PD_INPUT_VOL_CFG_5V && cur_uv <= ASUS_PD_INPUT_VOL_CFG_7_5V) {
 			cur_ua = (cur_ua > ASUS_PD_ICL_CUR_CFG_2A) ? ASUS_PD_ICL_CUR_CFG_2A : cur_ua;
-		} else if (cur_uv > ASUS_PD_MID_INPUT_VOL_CFG && cur_uv <= ASUS_PD_MAX_INPUT_VOL_CFG) {
-			cur_ua = (cur_ua > ASUS_PD_ICL_CUR_CFG_1_5A) ? ASUS_PD_ICL_CUR_CFG_1_5A : cur_ua;
+		} else if (cur_uv > ASUS_PD_INPUT_VOL_CFG_7_5V&& cur_uv <= ASUS_PD_INPUT_VOL_CFG_9V) {
+			cur_ua = (cur_ua > ASUS_PD_ICL_CUR_CFG_1_67A) ? ASUS_PD_ICL_CUR_CFG_1_67A : cur_ua;
 		} else {
-			cur_ua = 0;
 			usbpd_err(&pd->dev, "pdo-%d: uv (%d), ua (%d), out of spec! skip!\n", i, cur_uv, cur_ua);
 			continue;
 		}
 
+		pdo_candidate = 0;
 		cur_mw = (cur_uv / 1000) * (cur_ua / 1000);
-		usbpd_info(&pd->dev, "pdo-%d: mw (%d), uv (%d), ua (%d), meet spec!\n", i, cur_mw, cur_uv, cur_ua);
-		if (pre_mw < cur_mw || (pre_mw == cur_mw && cur_uv < pre_uv)) {
+		usbpd_info(&pd->dev, "pdo-%d: uv (%d), ua (%d), mw (%d) meet spec!\n", i, cur_uv, cur_ua, cur_mw);
+
+		/*
+		  *	Limit Input Current:
+		  *	ICL_CFG Rule: (by PDO Voltage)
+		  *	Vin = 5V			=> Set I Adp_max = min(3A, I PDO )
+		  *	5V < Vin <= 7.5V	=> Set I Adp_max = min(2A, I PDO )
+		  *	7.5V < Vin <= 9V	=> Set I Adp_max = min(1.67A, I PDO )
+		  *	9V < Vin			=> Set I Adp_max = 0A
+		  *
+		  *	PDO Select Condition:
+		  *	1. Max Padp profile
+		  *	2. If two Padp profiles are the same:
+		  * 		- Selecting the one Vin = 9V
+		  *		- If there is no pdo with Vin = 9V, selecting the one Vin is smaller.
+		  */
+		if (cur_mw > pre_mw) {
+			pdo_candidate = 1;
+			if (ASUS_PD_INPUT_VOL_CFG_9V == cur_uv) {
+				pdo_candidate_9v = 1;
+			} else {
+				pdo_candidate_9v = 0;
+			}
+		} else if (cur_mw == pre_mw && !pdo_candidate_9v) {
+			if (ASUS_PD_INPUT_VOL_CFG_9V == cur_uv) {
+				pdo_candidate = 1;
+				pdo_candidate_9v = 1;
+			} else if (cur_uv <  pre_uv) {
+				pdo_candidate = 1;
+			}
+		}
+
+		if (pdo_candidate) {
 			pre_mw = cur_mw;
 			pre_uv = cur_uv;
 			pre_ua = cur_ua;
@@ -2597,6 +2630,11 @@ static int usbpd_dr_set_property(struct dual_role_phy_instance *dual_role,
 	switch (prop) {
 	case DUAL_ROLE_PROP_MODE:
 		usbpd_dbg(&pd->dev, "Setting mode to %d\n", *val);
+
+		if (pd->current_state == PE_UNKNOWN) {
+			usbpd_warn(&pd->dev, "No active connection. Don't allow MODE change\n");
+			return -EAGAIN;
+		}
 
 		/*
 		 * Forces disconnect on CC and re-establishes connection.

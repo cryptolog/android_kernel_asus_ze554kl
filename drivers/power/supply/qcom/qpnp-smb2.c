@@ -283,19 +283,19 @@ struct timespec last_jeita_time;
 struct wake_lock asus_chg_lock;
 extern bool g_usb_alert_mode;		//ASUS_BSP Austin_T : add usb alert mode trigger
 extern bool g_low_impedance_mode;	//ASUS_BSP Austin_T : add low impedance mode trigger
-//extern bool g_water_proof_mode;		//ASUS_BSP Austin_T : add water proof mode trigger
-bool usb_alert_flag = 0;
+extern bool g_water_proof_mode;		//ASUS_BSP Austin_T : add water proof mode trigger
+volatile bool usb_alert_flag = 0;
 bool low_impedance_flag = 0;
-bool water_proof_flag = 0;
 bool water_once_flag = 0;
 bool boot_completed_flag = 0;
 extern int asus_CHG_TYPE;
 bool no_input_suspend_flag = 0;
 extern bool asus_flow_done_flag;
+bool demo_app_property_flag = 0;
+bool smartchg_stop_flag = 0;
 
 extern void smblib_asus_monitor_start(struct smb_charger *chg, int time);
 extern bool asus_get_prop_usb_present(struct smb_charger *chg);
-extern void asus_typec_removal_function(struct smb_charger *chg);
 extern void asus_smblib_stay_awake(struct smb_charger *chg);
 extern void asus_smblib_relax(struct smb_charger *chg);
 //ASUS BSP add struct functions ---
@@ -305,8 +305,9 @@ module_param_named(
 	debug_mask, __debug_mask, int, S_IRUSR | S_IWUSR
 );
 
-#define MICRO_1P5A	1500000
-#define MICRO_P1A	100000
+#define MICRO_1P5A		1500000
+#define MICRO_P1A		100000
+#define OTG_DEFAULT_DEGLITCH_TIME_MS	50
 static int smb2_parse_dt(struct smb2 *chip)
 {
 	struct smb_charger *chg = &chip->chg;
@@ -363,8 +364,10 @@ static int smb2_parse_dt(struct smb2 *chip)
 
 	rc = of_property_read_u32(node,
 				"qcom,otg-cl-ua", &chg->otg_cl_ua);
-	if (rc < 0)
-		chg->otg_cl_ua = MICRO_1P5A;
+	if (rc < 0) {
+		//chg->otg_cl_ua = MICRO_1P5A;
+		chg->otg_cl_ua = 500000;//Set default to 500mA
+	}
 
 	rc = of_property_read_u32(node,
 				"qcom,dc-icl-ua", &chip->dt.dc_icl_ua);
@@ -439,6 +442,12 @@ static int smb2_parse_dt(struct smb2 *chip)
 
 	chg->suspend_input_on_debug_batt = of_property_read_bool(node,
 					"qcom,suspend-input-on-debug-batt");
+
+	rc = of_property_read_u32(node, "qcom,otg-deglitch-time-ms",
+					&chg->otg_delay_ms);
+	if (rc < 0)
+		chg->otg_delay_ms = OTG_DEFAULT_DEGLITCH_TIME_MS;
+
 	return 0;
 }
 
@@ -1382,15 +1391,6 @@ static int smb2_configure_typec(struct smb_charger *chg)
 		return rc;
 	}
 
-	/* configure power role for dual-role */
-	rc = smblib_masked_write(chg, TYPE_C_INTRPT_ENB_SOFTWARE_CTRL_REG,
-				 TYPEC_POWER_ROLE_CMD_MASK, 0);
-	if (rc < 0) {
-		dev_err(chg->dev,
-			"Couldn't configure power role for DRP rc=%d\n", rc);
-		return rc;
-	}
-
 	/*
 	 * disable Type-C factory mode and stay in Attached.SRC state when VCONN
 	 * over-current happens
@@ -1768,6 +1768,16 @@ static int smb2_init_hw(struct smb2 *chip)
 static int smb2_post_init(struct smb2 *chip)
 {
 	struct smb_charger *chg = &chip->chg;
+	int rc; 
+ 
+ 	/* configure power role for dual-role */ 
+ 	rc = smblib_masked_write(chg, TYPE_C_INTRPT_ENB_SOFTWARE_CTRL_REG, 
+ 	TYPEC_POWER_ROLE_CMD_MASK, 0); 
+ 	if (rc < 0) { 
+ 		dev_err(chg->dev, 
+ 		"Couldn't configure power role for DRP rc=%d\n", rc); 
+ 		return rc; 
+ 	} 
 
 	rerun_election(chg->usb_irq_enable_votable);
 
@@ -2285,10 +2295,13 @@ static ssize_t boot_completed_store(struct device *dev,
 		CHG_DBG("%s: boot_completed_flag = 0\n", __func__);
 	} else if (tmp == 1) {
 		boot_completed_flag = true;
-		CHG_DBG("%s: boot_completed_flag = 1\n", __func__);
-		//schedule_delayed_work(&smbchg_dev->asus_usb_alert_work, 0);
-		//schedule_delayed_work(&smbchg_dev->asus_low_impedance_work, 0);
-		//schedule_delayed_work(&smbchg_dev->asus_water_proof_work, 0);
+		CHG_DBG("%s: boot_completed_flag = 1, check USB functions\n", __func__);
+		if (g_usb_alert_mode)
+			schedule_delayed_work(&smbchg_dev->asus_usb_alert_work, 0);
+		/*if (g_low_impedance_mode)
+			schedule_delayed_work(&smbchg_dev->asus_low_impedance_work, 0);
+		if (g_water_proof_mode && g_ASUS_hwID >= ZE554KL_PR2)
+			schedule_delayed_work(&smbchg_dev->asus_water_proof_work, 0);*/
 	}
 
 	return len;
@@ -2412,6 +2425,63 @@ static ssize_t disable_input_suspend_show(struct device *dev, struct device_attr
 	return sprintf(buf, "%d\n", no_input_suspend_flag);
 }
 
+static ssize_t demo_app_property_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	int tmp = 0;
+
+	tmp = buf[0] - 48;
+
+	if (tmp == 0) {
+		demo_app_property_flag = false;
+		CHG_DBG("%s: demo_app_property_flag = 0\n", __func__);
+	} else if (tmp == 1) {
+		demo_app_property_flag = true;
+		CHG_DBG("%s: demo_app_property_flag = 1\n", __func__);
+    }
+
+	return len;
+}
+
+static ssize_t demo_app_property_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", demo_app_property_flag);
+}
+
+static ssize_t smartchg_stop_charging_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	int tmp = 0;
+	int rc;
+
+	tmp = buf[0] - 48;
+
+	if (tmp == 0) {
+		CHG_DBG("%s: Smart charge enable charging\n", __func__);
+		smartchg_stop_flag = 0;
+		rc = smblib_masked_write(smbchg_dev, CHARGING_ENABLE_CMD_REG, CHARGING_ENABLE_CMD_BIT, 0);
+		if (rc < 0) {
+			printk("[BAT][CHG] Couldn't write charging_enable rc = %d\n", rc);
+			return rc;
+		}
+	} else if (tmp == 1) {
+		CHG_DBG("%s: Smart charge stop charging\n", __func__);
+		smartchg_stop_flag = 1;
+		rc = smblib_masked_write(smbchg_dev, CHARGING_ENABLE_CMD_REG, CHARGING_ENABLE_CMD_BIT, CHARGING_ENABLE_CMD_BIT);
+		if (rc < 0) {
+			printk("[BAT][CHG] Couldn't write charging_enable rc = %d\n", rc);
+			return rc;
+		}
+	}
+
+	return len;
+}
+
+static ssize_t smartchg_stop_charging_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", smartchg_stop_flag);
+}
+
 static DEVICE_ATTR(pmic_reg_dump, 0664, pmic_reg_dump_show, NULL);
 static DEVICE_ATTR(boot_completed, 0664, boot_completed_show, boot_completed_store);
 static DEVICE_ATTR(usb_thermal_alert, 0664, usb_thermal_alert_show, NULL);
@@ -2421,6 +2491,8 @@ static DEVICE_ATTR(TypeC_Side_Detect, 0664, TypeC_Side_Detect_show, NULL);
 static DEVICE_ATTR(asus_usb_suspend, 0664, asus_usb_suspend_show, asus_usb_suspend_store);
 static DEVICE_ATTR(CHG_TYPE, 0664, CHG_TYPE_show, NULL);
 static DEVICE_ATTR(disable_input_suspend, 0664, disable_input_suspend_show, disable_input_suspend_store);
+static DEVICE_ATTR(demo_app_property, 0664, demo_app_property_show, demo_app_property_store);
+static DEVICE_ATTR(smartchg_stop_charging, 0664, smartchg_stop_charging_show, smartchg_stop_charging_store);
 
 static struct attribute *asus_smblib_attrs[] = {
 	&dev_attr_pmic_reg_dump.attr,
@@ -2432,6 +2504,8 @@ static struct attribute *asus_smblib_attrs[] = {
 	&dev_attr_asus_usb_suspend.attr,
 	&dev_attr_CHG_TYPE.attr,
 	&dev_attr_disable_input_suspend.attr,
+	&dev_attr_demo_app_property.attr,
+	&dev_attr_smartchg_stop_charging.attr,
 	NULL
 };
 
@@ -2484,20 +2558,20 @@ struct switch_dev usb_alert_dev;
 void asus_usb_alert_work(struct work_struct *work)
 {
 	int status;
-	int usb_present;
 	int rc;
 
 	status = gpio_get_value(global_gpio->USB_THERMAL_ALERT);
 	CHG_DBG("%s: USB_alert boot completed, gpio79 status = %d\n", __func__, status);
-	usb_alert_flag = status;
-
-	usb_present = asus_get_prop_usb_present(smbchg_dev);
 
 	switch_set_state(&usb_alert_dev, status);
-	if (status == 1 && usb_present) {
-		//schedule_work(&smbchg_dev->usb_set_online_work);
+	usb_alert_flag = status;
+
+	if (status == 1) {
 		rc = smblib_set_usb_suspend(smbchg_dev, 1);
-		CHG_DBG("%s: usb_temp_alert_interrupt, set usb_online = 0 and suspend charger\n", __func__);
+		rc = smblib_masked_write(smbchg_dev, CMD_OTG_REG, OTG_EN_BIT, 0);
+		if (rc < 0)
+			dev_err(smbchg_dev->dev, "Couldn't set CMD_OTG_REG rc=%d\n", rc);
+		CHG_DBG("%s: usb_temp_alert_interrupt, suspend charger and otg\n", __func__);
 	}
 }
 
@@ -2505,7 +2579,6 @@ void asus_usb_alert_work(struct work_struct *work)
 static irqreturn_t usb_temp_alert_interrupt(int irq, void *dev_id)
 {
 	int status = gpio_get_value_cansleep(global_gpio->USB_THERMAL_ALERT);
-	int usb_present;
 	int rc;
 
 	CHG_DBG("%s: Get USB_Thermal_Status : %d\n", __func__, status);
@@ -2513,13 +2586,15 @@ static irqreturn_t usb_temp_alert_interrupt(int irq, void *dev_id)
 	switch_set_state(&usb_alert_dev, status);
 	usb_alert_flag = status;
 
-	usb_present = asus_get_prop_usb_present(smbchg_dev);
-
-	if (status == 1 && usb_present) {
+	if (status == 1) {
 		rc = smblib_set_usb_suspend(smbchg_dev, 1);
-		CHG_DBG("%s: usb_temp_alert_interrupt, suspend charger\n", __func__);
+		rc = smblib_masked_write(smbchg_dev, CMD_OTG_REG, OTG_EN_BIT, 0);
+		if (rc < 0)
+			dev_err(smbchg_dev->dev, "Couldn't set CMD_OTG_REG rc=%d\n", rc);
+		CHG_DBG("%s: usb_temp_alert_interrupt, suspend charger and otg\n", __func__);
+	} else {
+		CHG_DBG("%s: usb_temp_alert_cancel, enable charger and otg\n", __func__);
 	}
-	//schedule_work(&smbchg_dev->usb_set_online_work);
 
 	return IRQ_HANDLED;
 }
@@ -2548,6 +2623,8 @@ void asus_low_impedance_work(struct work_struct *work)
 	int usb_present;
 	int rc;
 
+	msleep(3000);
+
 	status = gpio_get_value(global_gpio->USB_LOW_IMPEDANCE);
 	CHG_DBG("%s: LOW_impedance boot completed, gpio77 status = %d\n", __func__, status);
 	low_impedance_flag = status;
@@ -2568,6 +2645,8 @@ static irqreturn_t usb_low_impedance_interrupt(int irq, void *dev_id)
 	int status = gpio_get_value_cansleep(global_gpio->USB_LOW_IMPEDANCE);
 	int usb_present;
 	int rc;
+
+	msleep(3000);
 
 	CHG_DBG("%s: Get LOW_Impedance_Status : %d\n", __func__, status);
 	switch_set_state(&low_impedance_dev, status);
@@ -2605,56 +2684,59 @@ struct switch_dev water_proof_dev;
 void asus_water_proof_work(struct work_struct *work)
 {
 	int status;
-	int usb_present;
-	int rc;
+	int usb_otg_present;
+	int ret;
+	u8 reg;
 
+	msleep(500);
+
+	ret = smblib_read(smbchg_dev, TYPE_C_STATUS_4_REG, &reg);
+	usb_otg_present = reg & CC_ATTACHED_BIT;
 	status = gpio_get_value(global_gpio->USB_WATER_PROOF);
-	CHG_DBG("%s: WATER_proof boot completed, gpio73 status = %d\n", __func__, status);
-	water_proof_flag = status;
 
-	usb_present = asus_get_prop_usb_present(smbchg_dev);
+	CHG_DBG("%s: status = %d, usb_otg_present = %d\n", __func__, status, usb_otg_present);
 
-	switch_set_state(&water_proof_dev, status);
 	if (status == 1) {
 		water_once_flag = 1;
-		rc = smblib_set_usb_suspend(smbchg_dev, 1);
-		CHG_DBG("%s: usb_water_proof_interrupt, suspend charger\n", __func__);
-	} else if (usb_present && water_once_flag) {
-		water_once_flag = 1;
-		rc = smblib_set_usb_suspend(smbchg_dev, 1);
-		CHG_DBG("%s: usb_water_proof_once, suspend charger\n", __func__);
+		switch_set_state(&water_proof_dev, 1);
+		CHG_DBG("%s: usb_water_proof_interrupt, show warning\n", __func__);
+	} else if (usb_otg_present && water_once_flag) {
+		switch_set_state(&water_proof_dev, 1);
+		CHG_DBG("%s: usb_water_proof_once, show warning\n", __func__);
 	} else {
 		water_once_flag = 0;
-		rc = smblib_set_usb_suspend(smbchg_dev, 0);
-		CHG_DBG("%s: no usb water, enable charger\n", __func__);
+		switch_set_state(&water_proof_dev, 0);
+		CHG_DBG("%s: no usb water, cancel warning\n", __func__);
 	}
 }
 
 //[+++]Add the interrupt handler for usb water proof
 static irqreturn_t usb_water_proof_interrupt(int irq, void *dev_id)
 {
-	int status = gpio_get_value_cansleep(global_gpio->USB_WATER_PROOF);
-	int usb_present;
-	int rc;
+	int usb_otg_present;
+	int status;
+	int ret;
+	u8 reg;
 
-	CHG_DBG("%s: Get WATER_Proof_Status : %d\n", __func__, status);
-	switch_set_state(&water_proof_dev, status);
-	water_proof_flag = status;
+	msleep(500);
 
-	usb_present = asus_get_prop_usb_present(smbchg_dev);
+	ret = smblib_read(smbchg_dev, TYPE_C_STATUS_4_REG, &reg);
+	usb_otg_present = reg & CC_ATTACHED_BIT;
+	status = gpio_get_value(global_gpio->USB_WATER_PROOF);
+
+	CHG_DBG("%s: status = %d, usb_otg_present = %d\n", __func__, status, usb_otg_present);
 
 	if (status == 1) {
 		water_once_flag = 1;
-		rc = smblib_set_usb_suspend(smbchg_dev, 1);
-		CHG_DBG("%s: usb_water_proof_interrupt, suspend charger\n", __func__);
-	} else if (usb_present && water_once_flag) {
-		water_once_flag = 1;
-		rc = smblib_set_usb_suspend(smbchg_dev, 1);
-		CHG_DBG("%s: usb_water_proof_once, suspend charger\n", __func__);
+		switch_set_state(&water_proof_dev, 1);
+		CHG_DBG("%s: usb_water_proof_interrupt, show warning\n", __func__);
+	} else if (usb_otg_present && water_once_flag) {
+		switch_set_state(&water_proof_dev, 1);
+		CHG_DBG("%s: usb_water_proof_once, show warning\n", __func__);
 	} else {
 		water_once_flag = 0;
-		rc = smblib_set_usb_suspend(smbchg_dev, 0);
-		CHG_DBG("%s: no usb water, enable charger\n", __func__);
+		switch_set_state(&water_proof_dev, 0);
+		CHG_DBG("%s: no usb water, cancel warning\n", __func__);
 	}
 	//schedule_work(&smbchg_dev->usb_set_online_work);
 
@@ -2683,7 +2765,7 @@ void asus_probe_pmic_settings(struct smb_charger *chg)
 
 //A-1:0x1365
 	rc = smblib_masked_write(chg, USBIN_LOAD_CFG_REG,
-			ICL_OVERRIDE_AFTER_APSD_BIT, 0x01);
+			ICL_OVERRIDE_AFTER_APSD_BIT, ICL_OVERRIDE_AFTER_APSD_BIT);
 	if (rc < 0) {
 		dev_err(chg->dev, "Couldn't set default USBIN_LOAD_CFG_REG rc=%d\n", rc);
 	}
@@ -2722,7 +2804,7 @@ void asus_probe_pmic_settings(struct smb_charger *chg)
 	}
 //A-8:0x1152
 	rc = smblib_masked_write(chg, OTG_CURRENT_LIMIT_CFG_REG,
-			OTG_CURRENT_LIMIT_MASK, 0x05);
+			OTG_CURRENT_LIMIT_MASK, 0x01);
 	if (rc < 0) {
 		dev_err(chg->dev, "Couldn't set default OTG_CURRENT_LIMIT_CFG_REG rc=%d\n", rc);
 	}
@@ -2740,11 +2822,6 @@ void asus_probe_pmic_settings(struct smb_charger *chg)
 	rc = smblib_write(chg, JEITA_CCCOMP_CFG_REG, 0x18);
 	if (rc < 0) {
 		dev_err(chg->dev, "Couldn't set default JEITA_CCCOMP_CFG_REG rc=%d\n", rc);
-	}
-//Disable INOV:0x1670
-	rc = smblib_write(chg, THERMREG_SRC_CFG_REG, 0x00);
-	if (rc < 0) {
-		dev_err(chg->dev, "Couldn't set default THERMREG_SRC_CFG_REG rc=%d\n", rc);
 	}
 }
 
@@ -2885,8 +2962,11 @@ static int smb2_probe(struct platform_device *pdev)
 		goto cleanup;
 	}
 
-	smb2_post_init(chip);
-
+	rc = smb2_post_init(chip); 
+ 	if (rc < 0) { 
+ 		pr_err("Failed in post init rc=%d\n", rc); 
+ 		goto cleanup; 
+ 	}
 //ASUS BSP : Add asus_workque +++
 	INIT_DELAYED_WORK(&chg->asus_usb_alert_work, asus_usb_alert_work);
 	INIT_DELAYED_WORK(&chg->asus_low_impedance_work, asus_low_impedance_work);
@@ -2912,7 +2992,7 @@ static int smb2_probe(struct platform_device *pdev)
 	asus_probe_pmic_settings(chg);
 
 //[+++]Add the gpio for USB high temperature alert
-	if (0) {
+	if (g_usb_alert_mode) {
 		gpio_ctrl->USB_THERMAL_ALERT = of_get_named_gpio(pdev->dev.of_node, "USB_THERMAL_ALERT-gpios52", 0);
 		if (gpio_ctrl->USB_THERMAL_ALERT > 0) {
 			CHG_DBG("%s: USB_THERMAL_ALERT-gpios52 init successfully\n", __func__);
@@ -2930,7 +3010,7 @@ static int smb2_probe(struct platform_device *pdev)
 			CHG_DBG_E("%s: gpio52_to_irq ERROR(%d).\n", __func__, usb_alert_irq);
 		}
 		rc = request_threaded_irq(usb_alert_irq, NULL, usb_temp_alert_interrupt,
-			IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING | IRQF_ONESHOT,	"usb_temp_alert", NULL);	//IRQF_ONESHOT
+			IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING | IRQF_ONESHOT | IRQF_NO_SUSPEND, "usb_temp_alert", NULL);	//IRQF_ONESHOT
 		if (rc < 0)
 			CHG_DBG_E("%s: Failed to request usb_temp_alert_interrupt\n", __func__);
 	}
@@ -2966,13 +3046,14 @@ static int smb2_probe(struct platform_device *pdev)
 			CHG_DBG_E("%s: gpio77_to_irq ERROR(%d).\n", __func__, low_impedance_irq);
 		}
 		rc = request_threaded_irq(low_impedance_irq, NULL, usb_low_impedance_interrupt,
-			IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING | IRQF_ONESHOT,	"usb_low_impedance", NULL);	//IRQF_ONESHOT
+			IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING | IRQF_ONESHOT | IRQF_NO_SUSPEND, "usb_low_impedance", NULL);	//IRQF_ONESHOT
 		if (rc < 0)
 			CHG_DBG_E("%s: Failed to request usb_low_impedance_interrupt\n", __func__);
 	}
 //[---]Add the gpio for USB low impedance alert
 
 //[+++]Add the gpio for USB water proof alert
+	//if (g_water_proof_mode && g_ASUS_hwID >= ZE554KL_PR2) {
 	if (0) {
 		gpio_ctrl->USB_WATER_PROOF = of_get_named_gpio(pdev->dev.of_node, "USB_WATER_PROOF-gpios73", 0);
 		if (gpio_ctrl->USB_WATER_PROOF > 0) {
@@ -2991,7 +3072,7 @@ static int smb2_probe(struct platform_device *pdev)
 			CHG_DBG_E("%s: gpio73_to_irq ERROR(%d).\n", __func__, water_proof_irq);
 		}
 		rc = request_threaded_irq(water_proof_irq, NULL, usb_water_proof_interrupt,
-			IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING | IRQF_ONESHOT,	"usb_water_proof", NULL);	//IRQF_ONESHOT
+			IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING | IRQF_ONESHOT | IRQF_NO_SUSPEND, "usb_water_proof", NULL);	//IRQF_ONESHOT
 		if (rc < 0)
 			CHG_DBG_E("%s: Failed to request usb_water_proof_interrupt\n", __func__);
 	}
@@ -3080,7 +3161,7 @@ static int smb2_resume(struct device *dev)
 		return 0;
 	}
 
-	if (!asus_flow_done_flag)
+	if(!asus_flow_done_flag)
 		return 0;
 
 	asus_smblib_stay_awake(smbchg_dev);
