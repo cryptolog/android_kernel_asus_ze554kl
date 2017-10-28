@@ -218,6 +218,18 @@ int fg_sram_write(struct fg_chip *chip, u16 address, u8 offset,
 	if (!fg_sram_address_valid(address, len))
 		return -EFAULT;
 
+//ASUS_BSP LiJen Wait for resume completion when fg_sram_write +++
+	if (flags & FG_IMA_ATOMIC){
+		/* Wait for resume completion */
+		rc = wait_for_completion_interruptible_timeout(
+			&chip->dev->power.completion,
+			msecs_to_jiffies(2000));
+		if (rc <= 0) {
+			pr_err("wait for resume timed out rc=%d\n", rc);
+		}
+	}
+//ASUS_BSP LiJen Wait for resume completion when fg_sram_write ---
+
 	if (!(flags & FG_IMA_NO_WLOCK))
 		vote(chip->awake_votable, SRAM_WRITE, true, 0);
 	mutex_lock(&chip->sram_rw_lock);

@@ -266,7 +266,13 @@ static int32_t msm_ois_write_settings(struct msm_ois_ctrl_t *o_ctrl,
 				rc = 0;
 				break;
 			case MSM_CAMERA_I2C_READ_MODE_DATA:
-				rc = 0;
+				if(settings[i].reg_addr == 0xFFFF)
+				{
+				       g_ois_mode = settings[i].reg_data;
+				}else{
+				       g_ois_mode = 255;
+				}
+				pr_err("%s: now_ois_mode = %d, expected_ois_mode = 0x%x\n", __func__, g_ois_mode, settings[i].reg_data);
 				break;
 			case MSM_CAMERA_I2C_READ_FW_DATA:
 
@@ -815,7 +821,7 @@ static int32_t msm_ois_power_up(struct msm_ois_ctrl_t *o_ctrl)
 	o_ctrl->ois_state = OIS_ENABLE_STATE;
 	g_ois_power_state = 1;
 	g_ois_camera_open = 1;
-	g_ois_mode = 0;//servo_off
+	g_ois_mode = 255;//servo_off
 	pr_err("%s: X\n", __func__);  /*ASUS_BSP bill_chen "Implement ois"*/
 	CDBG("Exit\n");
 	return rc;

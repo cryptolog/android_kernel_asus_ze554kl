@@ -1113,7 +1113,7 @@ free_card:
 		host->card = NULL;
 		mmc_remove_card(card);
 	}
-
+	printk("[SD] mmc_sd_init_card fail(%d)\n",err);
 	return err;
 }
 
@@ -1126,6 +1126,10 @@ static void mmc_sd_remove(struct mmc_host *host)
 	BUG_ON(!host->card);
 
 	mmc_exit_clk_scaling(host);
+	//ASUS_BSP hammert +++
+	if (!strcmp(mmc_hostname(host),"mmc1"))
+		printk("[SD]mmc_sd_remove\n");
+	//ASUS_BSP hammert ---
 	mmc_remove_card(host->card);
 
 	mmc_claim_host(host);
@@ -1147,9 +1151,10 @@ static int mmc_sd_alive(struct mmc_host *host)
 static void mmc_sd_detect(struct mmc_host *host)
 {
 	int err = 0;
-#ifdef CONFIG_MMC_PARANOID_SD_INIT
+#if 1 //def CONFIG_MMC_PARANOID_SD_INIT
 	int retries = 5;
 #endif
+	int retries2 = 3;//ASUS_BSP
 
 	BUG_ON(!host);
 	BUG_ON(!host->card);
@@ -1169,7 +1174,7 @@ static void mmc_sd_detect(struct mmc_host *host)
 	/*
 	 * Just check if our card has been removed.
 	 */
-#ifdef CONFIG_MMC_PARANOID_SD_INIT
+#if 1//def CONFIG_MMC_PARANOID_SD_INIT
 	while(retries) {
 		err = mmc_send_status(host->card, NULL);
 		if (err) {
@@ -1179,9 +1184,56 @@ static void mmc_sd_detect(struct mmc_host *host)
 		}
 		break;
 	}
+	#if 1 //ASUS_BSP: add for sometime SD card no response fail when resume
+	if (!strcmp(mmc_hostname(host),"mmc1"))
+	{
+		if (retries!=5)
+			printk("[SD] %s(%s): retry (%d)\n",
+			__func__, mmc_hostname(host), retries);
+	}
+
+	if(err)
+	{
+		do{
+			mmc_power_off(host);
+			usleep_range(5000, 5500);
+			mmc_power_up(host, host->card->ocr);
+			mmc_select_voltage(host, host->card->ocr);
+			mmc_sd_init_card(host, host->card->ocr, host->card);
+			retries2--;
+			//} while((err!=0) && (retries!=0));
+
+			retries=5;
+
+			while(retries) {
+			err = mmc_send_status(host->card, NULL);
+			if (err) {
+				retries--;
+				udelay(5);
+				continue;
+				}
+				break;
+			}
+
+			if (!strcmp(mmc_hostname(host),"mmc1"))
+			{
+			if (retries!=5)
+				printk("[SD] %s(%s): retry2 (%d)\n",
+				__func__, mmc_hostname(host), retries);
+			}
+		} while((err!=0) && (retries2!=0));
+	}
+	#endif
 	if (!retries) {
+	//ASUS_BSP hammert +++
+		if (!strcmp(mmc_hostname(host),"mmc1"))
+		{
+			printk("[SD] %s(%s): Unable to re-detect card (%d)\n",
+			__func__, mmc_hostname(host), err);
+		}else{
 		printk(KERN_ERR "%s(%s): Unable to re-detect card (%d)\n",
 		       __func__, mmc_hostname(host), err);
+		}
 		err = _mmc_detect_card_removed(host);
 	}
 #else

@@ -36,7 +36,7 @@ unsigned char g_ois_status = 0;
 
 uint8_t g_ois_power_state = 0;
 
-uint8_t g_ois_mode = 0;
+uint8_t g_ois_mode = 255;
 
 uint8_t g_ois_camera_open = 0;
 

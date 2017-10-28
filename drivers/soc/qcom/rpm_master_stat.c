@@ -50,6 +50,9 @@
 
 #define GET_FIELD(a) ((strnstr(#a, ".", 80) + 1))
 
+static uint32_t adsp_sleep_count = 0;
+module_param_named(adsp_sleep_count, adsp_sleep_count, uint, S_IRUGO | S_IWUSR | S_IWGRP);
+
 struct msm_rpm_master_stats {
 	uint32_t active_cores;
 	uint32_t numshutdowns;
@@ -332,6 +335,7 @@ void asus_rpmMaster_info(int tag)
 	struct msm_rpm_master_stats_platform_data *pdata;
 	static uint32_t l_previousCount[MAX_NUM_MASTERS], l_previousActive[MAX_NUM_MASTERS];
 	uint32_t l_currentCount[MAX_NUM_MASTERS], l_currentActive[MAX_NUM_MASTERS];
+	static uint32_t adsp_previous_xo_count = 0;
 	u32 l_num_masters = MAX_NUM_MASTERS;
 	int i = 0;
 	if (g_prvdata) {
@@ -353,7 +357,18 @@ void asus_rpmMaster_info(int tag)
 					if (l_currentCount[i] == l_previousCount[i]) {
 						printk("[RPM]%s: %s - xo_count doesn't increase: %u\n", __func__, GET_MASTER_NAME(i, prvdata), l_currentCount[i]);
 					}
-				} else{
+				} else if (!strncmp(GET_MASTER_NAME(i, prvdata), "ADSP", sizeof("ADSP"))) {
+					if (l_currentCount[i] == adsp_previous_xo_count) {
+						printk("[RPM]%s: %s - xo_count doesn't increase: %u\n", __func__, GET_MASTER_NAME(i, prvdata), l_currentCount[i]);
+						adsp_sleep_count++;
+						printk("[RPM]%s: %s - Increase ADSP sleep counter: %u\n", __func__, GET_MASTER_NAME(i, prvdata), adsp_sleep_count);
+					} else {
+						adsp_sleep_count = 0;
+						printk("[RPM]%s: %s - xo_count changed! Reset ADSP sleep counter: %u\n", __func__, GET_MASTER_NAME(i, prvdata), adsp_sleep_count);
+					}
+
+					adsp_previous_xo_count = l_currentCount[i];
+				} else {
 					if (l_currentCount[i] != l_previousCount[i] || l_currentActive[i] || l_previousActive[i]) {
 						printk("[RPM]%s: %s - xo_count: %u => %u, active_cores: %u => %u\n", __func__, 
 							GET_MASTER_NAME(i, prvdata), l_previousCount[i], l_currentCount[i], l_previousActive[i], l_currentActive[i]);

@@ -1336,6 +1336,9 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 	//nancy++ for focal touch resume
 	fts_ts_resume();
 	//nancy-- for focal touch resume
+
+	pr_info("%s: Set CABC level: %d", __func__, cabc_mode[1]);
+	set_tcon_cmd(cabc_mode, ARRAY_SIZE(cabc_mode));
 end:
 	pr_debug("%s:-\n", __func__);
 	pr_err("[Display] %s: ---\n", __func__);
@@ -1613,7 +1616,8 @@ static ssize_t cabc_proc_write(struct file *filp, const char *buff, size_t len, 
     else if(strncmp(messages, "3", 1) == 0) //moving
         cabc_mode[1] = 0x3;
 
-    set_tcon_cmd(cabc_mode, ARRAY_SIZE(cabc_mode));
+    //set_tcon_cmd(cabc_mode, ARRAY_SIZE(cabc_mode));
+    pr_info("%s: Postpone setting CABC until next panel on", __func__);
 
     return len;
 }

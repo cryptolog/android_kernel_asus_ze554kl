@@ -1248,6 +1248,27 @@ static ssize_t fts_dumpreg_show(struct device *dev, struct device_attribute *att
     return count;
 }
 
+static ssize_t fts_fwcompare_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	u8 uc_tp_fm_ver;
+	u8 uc_host_fm_ver = 0;
+	bool fwcompare_result;
+
+	fts_i2c_read_reg(fts_i2c_client, FTS_REG_FW_VER, &uc_tp_fm_ver);
+
+	uc_host_fm_ver = fts_ctpm_get_app_ver();
+
+	printk("[Focal][Touch]: cat fts_fwcompare node\n");
+	printk("[Focal][Touch]: uc_tp_fm_ver = 0x%x, uc_host_fm_ver = 0x%x\n", uc_tp_fm_ver, uc_host_fm_ver);
+
+	if (uc_tp_fm_ver != uc_host_fm_ver )
+		fwcompare_result = false;
+	else
+		fwcompare_result = true;
+
+	return sprintf(buf, "%d\n", fwcompare_result);
+}
+
 /****************************************/
 /* sysfs */
 /* get the fw version
@@ -1279,6 +1300,7 @@ static DEVICE_ATTR(fts_esd_check, S_IRUGO|S_IWUSR, fts_esdcheck_show, fts_esdche
 #endif
 static DEVICE_ATTR(set_reset_pin_level, S_IRUGO|S_IWUSR, set_reset_pin_level_show, set_reset_pin_level_store);
 static DEVICE_ATTR(disable_touch, S_IRUGO|S_IWUSR, disable_touch_show, disable_touch_store);
+static DEVICE_ATTR(fts_fwcompare, S_IRUGO|S_IWUSR, fts_fwcompare_show, NULL);
 
 /* add your attr in here*/
 static struct attribute *fts_attributes[] =
@@ -1296,6 +1318,7 @@ static struct attribute *fts_attributes[] =
 #if FTS_ESDCHECK_EN
     &dev_attr_fts_esd_check.attr,
 #endif
+	&dev_attr_fts_fwcompare.attr,
     NULL
 };
 

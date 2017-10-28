@@ -4231,13 +4231,35 @@ static int mmc_rescan_try_freq(struct mmc_host *host, unsigned freq)
 
 	mmc_send_if_cond(host, host->ocr_avail);
 
+		//ASUS_BSP hammert +++
+		if (!strcmp(mmc_hostname(host),"mmc1"))
+			printk("[SD]try to find card type\n");
+		//ASUS_BSP hammert ---
+
 	/* Order's important: probe SDIO, then SD, then MMC */
 	if (!mmc_attach_sdio(host))
 		return 0;
+
+		//ASUS_BSP hammert +++
+		if (!strcmp(mmc_hostname(host),"mmc1"))
+			printk("[SD]Not SDIO\n");
+		//ASUS_BSP hammert ---
+
 	if (!mmc_attach_sd(host))
 		return 0;
+
+		//ASUS_BSP hammert +++
+		if (!strcmp(mmc_hostname(host),"mmc1"))
+			printk("[SD]Not SD\n");
+		//ASUS_BSP hammert ---
+
 	if (!mmc_attach_mmc(host))
 		return 0;
+
+		//ASUS_BSP hammert +++
+		if (!strcmp(mmc_hostname(host),"mmc1"))
+			printk("[SD]Not MMC\n");
+		//ASUS_BSP hammert ---
 
 	mmc_power_off(host);
 	return -EIO;
@@ -4589,6 +4611,11 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 			err = host->bus_ops->pre_suspend(host);
 		if (!err)
 			break;
+
+		//ASUS_BSP hammert +++
+		if (!strcmp(mmc_hostname(host),"mmc1"))
+		printk("[SD]mmc_pm_notify remove card\n");
+		//ASUS_BSP hammert ---
 
 		/* Calling bus_ops->remove() with a claimed host can deadlock */
 		host->bus_ops->remove(host);

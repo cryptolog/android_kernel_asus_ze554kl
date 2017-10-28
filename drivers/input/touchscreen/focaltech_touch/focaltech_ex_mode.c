@@ -69,7 +69,8 @@ int  fts_enter_charger_mode(struct i2c_client *client, int mode );
 int  fts_charger_init(struct i2c_client *client);
 int  fts_charger_exit(struct i2c_client *client);
 extern void synaptic_usb_detection(bool plugin);
-
+bool cover_call_glove = false;
+bool cover_enable_touch_f = false;
 /*****************************************************************************
 * 6.Static function prototypes
 *******************************************************************************/
@@ -117,13 +118,28 @@ int fts_enter_glove_mode( struct i2c_client *client, int mode)
     int ret = 0;
     static u8 buf_addr[2] = { 0 };
     static u8 buf_value[2] = { 0 };
+	if (cover_call_glove)
+	{
+		buf_addr[0] = 0xC1;
+		printk("[Focal][Touch] cover mode : write 0xC1\n");
+		cover_call_glove = false;
+	}
+	else
+	{
     buf_addr[0] = FTS_REG_GLOVE_MODE_EN; //glove control
+		printk("[Focal][Touch] glove mode : write 0xC0\n");
+	}
 
     if (mode)
+	{
         buf_value[0] = 0x01;
+		printk("[Focal][Touch] glove function : set to 1\n");
+	}
     else
+	{
         buf_value[0] = 0x00;
-
+		printk("[Focal][Touch] glove function : set to 0\n");
+	}
     ret = fts_i2c_write_reg( client, buf_addr[0], buf_value[0]);
     if (ret<0)
     {
@@ -156,21 +172,26 @@ static ssize_t fts_touch_cover_store(struct device *dev, struct device_attribute
 
 	if (FTS_SYSFS_ECHO_ON(buf))
     {
-        if ((!g_fts_mode_flag.fts_cover_mode_flag) && (!g_fts_mode_flag.fts_glove_mode_flag))
+        if (!g_fts_mode_flag.fts_cover_mode_flag)
 		{
-			FTS_INFO("[Mode]enter cover mode");
+			printk("[Mode]enter cover mode");
             g_fts_mode_flag.fts_cover_mode_flag = true;
 			fts_wq_data->cover_mode_eable = 1;
+			msleep(150);
+			cover_enable_touch_f = true;
+			cover_call_glove = true;
             ret = fts_enter_glove_mode(fts_i2c_client,true);
         }
 	}
 	else if (FTS_SYSFS_ECHO_OFF(buf))
     {
-        if ((g_fts_mode_flag.fts_cover_mode_flag) && (!g_fts_mode_flag.fts_glove_mode_flag))
+        if (g_fts_mode_flag.fts_cover_mode_flag)
 		{
-			FTS_INFO("[Mode]exit cover mode");
+			printk("[Mode]exit cover mode");
             g_fts_mode_flag.fts_cover_mode_flag = false;
-			fts_wq_data->cover_mode_eable =0 ;
+			fts_wq_data->cover_mode_eable =0;
+			cover_enable_touch_f = false;
+			cover_call_glove = true;
             ret = fts_enter_glove_mode(fts_i2c_client,false);
         }
     }
@@ -391,8 +412,11 @@ int fts_ex_mode_recovery(struct i2c_client *client)
 #endif
 
 #if FTS_COVER_EN
-    if ((g_fts_mode_flag.fts_cover_mode_flag) && (!g_fts_mode_flag.fts_glove_mode_flag))
+    if (g_fts_mode_flag.fts_cover_mode_flag)
+	{
+		cover_call_glove = true;
         ret = fts_enter_glove_mode(client, true);
+	}
 #endif
 
 #if FTS_CHARGER_EN

@@ -39,6 +39,9 @@
 
 #include "irq-gic-common.h"
 
+static uint32_t adsp_irq_continuous_count = 0;
+module_param_named(adsp_irq_continuous_count, adsp_irq_continuous_count, uint, S_IRUGO | S_IWUSR | S_IWGRP);
+
 int gic_irq_cnt,gic_resume_irq[8];//[Power]Add these values to save IRQ's counts and number
 struct redist_region {
 	void __iomem		*redist_base;
@@ -453,12 +456,15 @@ int modem_resume_irq_flag_function(void)
 EXPORT_SYMBOL(modem_resume_irq_flag_function);
 /*ASUS-BBSP Log Modem Wake Up Info---*/
 
+#define ADSP_IRQ 189
 static void gic_show_resume_irq(struct gic_chip_data *gic)
 {
 	unsigned int i;
 	u32 enabled;
 	u32 pending[32];
 	void __iomem *base = gic_data_dist_base(gic);
+	static bool adsp_previous_trigger = false;
+	bool adsp_current_trigger = false;
 
 //[+++][PM]reset IRQ count and IRQ number every time.
 	int j;
@@ -490,6 +496,11 @@ static void gic_show_resume_irq(struct gic_chip_data *gic)
 
 		printk("[PM] %s: %d triggered %s\n", __func__, i, name);	/*print GIC_V3 irq number*/
 		log_wakeup_reason(i);
+
+		if(i == ADSP_IRQ) {
+			adsp_current_trigger = true;
+		}
+		
 //[+++][PM]save IRQ's counts and number
 		if (gic_irq_cnt < 8) {
 			gic_resume_irq[gic_irq_cnt] = i;
@@ -520,6 +531,31 @@ static void gic_show_resume_irq(struct gic_chip_data *gic)
                 }
                 //ASUS_BSP --- Johnny [Qcom][PS][][ADD]Print first IP address log when IRQ 484
 	}
+
+	if(adsp_current_trigger) {
+		if(adsp_previous_trigger) {
+			/**********************************************************************
+			 *	Continuous irq 189 triggered by ADSP, increase ADSP irq counter
+			 **********************************************************************/
+ 
+			adsp_irq_continuous_count++;
+			printk("[PM] %s: Increase ADSP irq counter, irq: %d, adsp_irq_continuous_count: %u\n", __func__, i, adsp_irq_continuous_count);
+		}
+	} else {
+		adsp_irq_continuous_count = 0;
+
+		if(adsp_previous_trigger){
+			/**********************************************************************
+			 *	Irq 189 does not continuously trigger resume, reset ADSP irq counter
+			 **********************************************************************/
+
+			printk("[PM] %s: Irq 189 does not continuously trigger resume. Reset ADSP irq counter, adsp_irq_continuous_count: %u\n", 
+					__func__, adsp_irq_continuous_count);
+		}
+	}
+
+	adsp_previous_trigger = adsp_current_trigger;
+
 //[+++][PM]Save maxmum count to 8
 	if (gic_irq_cnt >= 8) {
 		gic_irq_cnt = 7;

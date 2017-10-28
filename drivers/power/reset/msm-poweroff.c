@@ -307,7 +307,6 @@ static void msm_restart_prepare(const char *cmd)
 	} else {
 		qpnp_pon_system_pwr_off(PON_POWER_OFF_HARD_RESET);
 	}
-	
 	if (!in_panic) {
 		// Normal reboot. Clean the printk buffer magic
 		printk_buffer_slot2_addr = (ulong *)PRINTK_BUFFER_SLOT2;
@@ -346,9 +345,15 @@ static void msm_restart_prepare(const char *cmd)
 			__raw_writel(0x6f656d88, restart_reason);
 		} else if (!strcmp(cmd, "EnterShippingMode")) {
 		qpnp_pon_set_restart_reason(
-				PON_RESTART_REASON_SHIPMODE);		
+				PON_RESTART_REASON_SHIPMODE);
 			__raw_writel(0x6f656d43, restart_reason);
-		// --- ASUS_BSP: add asus reboot reason for ATD interface			
+		// --- ASUS_BSP: add asus reboot reason for ATD interface
+		// +++ ASUS_BSP: add for asus user unlock
+		} else if (!strncmp(cmd, "app-unlock", 10)) {
+				qpnp_pon_set_restart_reason(
+				PON_RESTART_REASON_UNLOCK);
+			__raw_writel(0x6f656d08, restart_reason);
+		// --- ASUS_BSP: add for asus user unlock
 		} else if (!strncmp(cmd, "oem-", 4)) {
 			unsigned long code;
 			int ret;

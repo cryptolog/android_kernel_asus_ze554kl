@@ -41,6 +41,7 @@
 #include <linux/platform_device.h>
 #include <linux/input/synaptics_dsx.h>
 #include "synaptics_dsx_core.h"
+
 #define BOE_FW_IHEX_NAME "synaptics/PR2459435-BOE-4004E314_0906.hex.bin"
 //#define BOE_FW_IHEX_NAME "synaptics/PR2463803-BOE-4004F315_0909.hex.bin"
 #define TM_FW_IHEX_NAME "synaptics/PR2459433-TM-4001E315_0905.hex.bin"
@@ -197,6 +198,9 @@ static ssize_t fwu_sysfs_guest_code_block_count_show(struct device *dev,
 
 static ssize_t fwu_sysfs_write_guest_code_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count);
+
+static ssize_t fwu_sysfs_tpfw_compare_show(struct device *dev,
+		struct device_attribute *attr, char *buf);
 
 enum f34_version {
 	F34_V0 = 0,
@@ -728,6 +732,9 @@ static struct device_attribute attrs[] = {
 	__ATTR(writeguestcode, 0220,
 			synaptics_rmi4_show_error,
 			fwu_sysfs_write_guest_code_store),
+	__ATTR(tpfw_compare, S_IRUGO,
+			fwu_sysfs_tpfw_compare_show,
+			synaptics_rmi4_store_error),
 };
 
 static struct synaptics_rmi4_fwu_handle *fwu;
@@ -4153,6 +4160,32 @@ static ssize_t fwu_sysfs_store_image(struct file *data_file,
 	fwu->data_pos += count;
 
 	return count;
+}
+
+static ssize_t fwu_sysfs_tpfw_compare_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	unsigned char *fw_file_name = Titan_BOE_FW_IMAGE_NAME;
+	unsigned char parse_fw_version[10] = {0};
+	bool fwcompare_result;
+	int bin_fw_version;
+	int ic_fw_version;
+
+	printk("[Synaptic][Touch] cat tpfw_compare node\n");
+
+	strncpy(parse_fw_version, fw_file_name+27, 2);
+	sscanf(parse_fw_version, "%x", &bin_fw_version);
+	ic_fw_version = asus_config_id[3];
+
+	printk("[Synaptic][Touch] ic_fw_version = %x, bin_fw_version = %x\n", ic_fw_version, bin_fw_version);
+
+	if (ic_fw_version == bin_fw_version)
+		fwcompare_result = true;
+	else
+		fwcompare_result = false;
+
+	return snprintf(buf,PAGE_SIZE,"%d\n", fwcompare_result);
+
 }
 
 static ssize_t fwu_sysfs_tpfw_version_show(struct device *dev,

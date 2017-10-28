@@ -450,6 +450,7 @@ module_param_named(
 
 static int fg_restart;
 static bool fg_sram_dump;
+extern bool fg_batt_id_ready;
 
 /* All getters HERE */
 
@@ -2183,9 +2184,11 @@ static void status_change_work(struct work_struct *work)
 		goto out;
 	}
 
+	BAT_DBG("%s mutex_lock\n", __func__);
 	mutex_lock(&chip->charge_status_lock);
 	gauge_get_prop = 1;
 	mutex_unlock(&chip->charge_status_lock);
+	BAT_DBG("%s mutex_unlock\n", __func__);
 	
 	rc = power_supply_get_property(chip->batt_psy, POWER_SUPPLY_PROP_STATUS,
 			&prop);
@@ -5446,7 +5449,8 @@ static int fg_gen3_probe(struct platform_device *pdev)
 	schedule_delayed_work(&regular_check_soc_work, SOC_CHECK_INTERVAL * HZ);
 	schedule_delayed_work(&init_asus_capacity_work, 5* HZ);
 
-		
+
+	fg_batt_id_ready = 1;	
 	BAT_DBG("FG GEN3 driver probed successfully\n");
 	return 0;
 exit:

@@ -751,7 +751,7 @@ static ssize_t asus_boe_enable_glove(struct synaptics_rmi4_data *rmi4_data)
 	if (retval < 0)
 		return -EINVAL;
 
-	f12_2d_ctrl15[0] = 0x7b;
+	f12_2d_ctrl15[0] = 0x54;
 
 	retval = synaptics_rmi4_reg_write(rmi4_data,0x0018,f12_2d_ctrl15,1);
 	if (retval < 0)
@@ -812,7 +812,7 @@ static ssize_t asus_boe_disable_glove(struct synaptics_rmi4_data *rmi4_data)
 	if (retval < 0)
 		return -EINVAL;
 
-	f12_2d_ctrl15[0] = 0x7b;
+	f12_2d_ctrl15[0] = 0x54;
 
 	retval = synaptics_rmi4_reg_write(rmi4_data,0x0018,f12_2d_ctrl15,1);
 	if (retval < 0)
@@ -1369,9 +1369,19 @@ static ssize_t synaptics_rmi4_cover_mode_store(struct device *dev,
 	}
 	else
 	{
+		if(cover_mode == 0)
+		{
+			cover_enable_touch = false;
 		printk("[Touch] clear synaptics_rmi4_free_fingers\n");
 		synaptics_rmi4_free_fingers(rmi4_data);
-		asus_boe_enable_glove(rmi4_data);	
+		}
+		else
+		{
+			msleep(400);
+			cover_enable_touch = true;
+			printk("[Touch] clear synaptics_rmi4_free_fingers\n");
+			synaptics_rmi4_free_fingers(rmi4_data);
+		}
 	}
 
 	mutex_unlock(&(rmi4_data->cover_mutex));

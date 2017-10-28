@@ -680,6 +680,10 @@ try_again:
 
 		if (oldcard && (oldcard->type != MMC_TYPE_SD_COMBO ||
 		    memcmp(card->raw_cid, oldcard->raw_cid, sizeof(card->raw_cid)) != 0)) {
+		//ASUS_BSP hammert +++
+		if (!strcmp(mmc_hostname(host),"mmc1"))
+			printk("[SD]mmc_sdio_init_card rc 1\n");
+		//ASUS_BSP hammert ---
 			mmc_remove_card(card);
 			return -ENOENT;
 		}
@@ -687,6 +691,10 @@ try_again:
 		card->type = MMC_TYPE_SDIO;
 
 		if (oldcard && oldcard->type != MMC_TYPE_SDIO) {
+		//ASUS_BSP hammert +++
+		if (!strcmp(mmc_hostname(host),"mmc1"))
+			printk("[SD]mmc_sdio_init_card rc 2\n");
+		//ASUS_BSP hammert ---
 			mmc_remove_card(card);
 			return -ENOENT;
 		}
@@ -715,6 +723,10 @@ try_again:
 			sdio_reset(host);
 			mmc_go_idle(host);
 			mmc_send_if_cond(host, host->ocr_avail);
+		//ASUS_BSP hammert +++
+		if (!strcmp(mmc_hostname(host),"mmc1"))
+			printk("[SD]mmc_sdio_init_card rc 3\n");
+		//ASUS_BSP hammert ---
 			mmc_remove_card(card);
 			retries--;
 			goto try_again;
@@ -812,6 +824,10 @@ try_again:
 	if (oldcard) {
 		int same = (card->cis.vendor == oldcard->cis.vendor &&
 			    card->cis.device == oldcard->cis.device);
+		//ASUS_BSP hammert +++
+		if (!strcmp(mmc_hostname(host),"mmc1"))
+			printk("[SD]mmc_sdio_init_card rc 4\n");
+		//ASUS_BSP hammert ---
 		mmc_remove_card(card);
 		if (!same)
 			return -ENOENT;
@@ -881,7 +897,13 @@ finish:
 
 remove:
 	if (!oldcard)
+	{
+		//ASUS_BSP hammert +++
+		if (!strcmp(mmc_hostname(host),"mmc1"))
+			printk("[SD]mmc_sdio_init_card rc 5\n");
+		//ASUS_BSP hammert ---
 		mmc_remove_card(card);
+	}
 
 err:
 	return err;
@@ -903,7 +925,10 @@ static void mmc_sdio_remove(struct mmc_host *host)
 			host->card->sdio_func[i] = NULL;
 		}
 	}
-
+	//ASUS_BSP hammert +++
+	if (!strcmp(mmc_hostname(host),"mmc1"))
+		printk("[SD]mmc_sdio_remove\n");
+	//ASUS_BSP hammert ---
 	mmc_remove_card(host->card);
 	host->card = NULL;
 }

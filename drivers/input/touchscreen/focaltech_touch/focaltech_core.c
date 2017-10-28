@@ -114,8 +114,8 @@ bool fts_gesture_check(void);
 int report_touch_locatoin_count[10];
 /* --- asus add for print touch location --- */
 static bool touch_down_up_status;
-
-
+extern bool cover_enable_touch_f;
+bool key_down_status = false;
 /*****************************************************************************
 *  Name: fts_wait_tp_to_valid
 *  Brief:   Read chip id until TP FW become valid, need call when reset/power on/resume...
@@ -203,7 +203,7 @@ int fts_reset_proc(int hdelayms)
 {
 	pr_err("[FTS][touch] %s ,reset touch !\n",__func__);
     gpio_direction_output(fts_wq_data->pdata->reset_gpio, 0);
-    msleep(20);
+    msleep(10);
     gpio_direction_output(fts_wq_data->pdata->reset_gpio, 1);
     msleep(hdelayms);
 
@@ -775,6 +775,7 @@ static int fts_input_dev_report_b(struct ts_event *event, struct fts_ts_data *da
 		memset(report_touch_locatoin_count, 0, sizeof(report_touch_locatoin_count));
 		/* --- asus jacob add for print touch location --- */
         input_report_key(data->input_dev, BTN_TOUCH, 0);
+		key_down_status = false;
     }
     else
     {
@@ -785,6 +786,7 @@ static int fts_input_dev_report_b(struct ts_event *event, struct fts_ts_data *da
 			event->au8_touch_event[0], event->au16_x[0], event->au16_y[0], event->pressure[0], event->area[0]);
 		}
         input_report_key(data->input_dev, BTN_TOUCH, event->touch_point > 0);
+		key_down_status = true;
     }
 
     input_sync(data->input_dev);
@@ -1348,9 +1350,12 @@ static irqreturn_t fts_ts_interrupt(int irq, void *dev_id)
     mutex_lock(&fts_wq_data->report_mutex);
     if(g_focal_touch_init_status == 1) {
         ret = fts_read_touchdata(fts_wq_data);
-        if (ret == 0 && (!disable_tp_flag))
+        if (((!cover_enable_touch_f) && (HALLsensor_gpio_value() == 0) && (!key_down_status)) || (ret != 0 || (disable_tp_flag)))
         {
-            
+			printk("[Focal][Touch] disable touch due to hall sensor CLOSE\n");
+	    }
+		else
+		{
             fts_report_value(fts_wq_data);
             
 	    }
@@ -1797,7 +1802,9 @@ static int fts_ts_probe(struct i2c_client *client, const struct i2c_device_id *i
     input_set_abs_params(input_dev, ABS_MT_POSITION_X, pdata->x_min, pdata->x_max, 0, 0);
     input_set_abs_params(input_dev, ABS_MT_POSITION_Y, pdata->y_min, pdata->y_max, 0, 0);
     input_set_abs_params(input_dev, ABS_MT_TOUCH_MAJOR, 0, 0xFF, 0, 0);
+#if FTS_REPORT_PRESSURE_EN
     input_set_abs_params(input_dev, ABS_MT_PRESSURE, 0, 0xFF, 0, 0);
+#endif
 	input_set_capability(input_dev, EV_KEY, KEY_BACK);
 	//input_set_capability(input_dev, EV_KEY, KEY_HOME);
 	input_set_capability(input_dev, EV_KEY, KEY_MENU);

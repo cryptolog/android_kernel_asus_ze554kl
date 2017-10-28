@@ -2714,6 +2714,10 @@ static void mmc_remove(struct mmc_host *host)
 	unregister_reboot_notifier(&host->card->reboot_notify);
 
 	mmc_exit_clk_scaling(host);
+	//ASUS_BSP hammert +++
+	if (!strcmp(mmc_hostname(host),"mmc1"))
+		printk("[SD]mmc_remove\n");
+	//ASUS_BSP hammert ---
 	mmc_remove_card(host->card);
 
 	mmc_claim_host(host);

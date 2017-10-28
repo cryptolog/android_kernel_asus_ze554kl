@@ -73,13 +73,13 @@
  * Linux MultiTouch Protocol
  * 1: Protocol B(default), 0: Protocol A
  */
-#define FTS_MT_PROTOCOL_B_EN                    0
+#define FTS_MT_PROTOCOL_B_EN                    1
 
 /*
  * Report Pressure in multitouch
  * 1:enable(default),0:disable
 */
-#define FTS_REPORT_PRESSURE_EN                  1
+#define FTS_REPORT_PRESSURE_EN                  0
 
 /*
  * Force touch support
@@ -171,7 +171,7 @@
  * FW_APP.i file for upgrade
  * define your own fw_app, the sample one is invalid
  */
-#define FTS_UPGRADE_FW_APP                      "include/firmware/ASUS_TITAN_V0x60_app.i"
+#define FTS_UPGRADE_FW_APP                      "include/firmware/ASUS_TITAN_V0x65_app.i"
 
 /*
  * auto upgrade with app.bin in sdcard

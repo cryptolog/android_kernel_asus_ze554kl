@@ -3027,6 +3027,25 @@ static int smb2_probe(struct platform_device *pdev)
 //[---]Add the gpio for USB high temperature alert
 
 //[+++]Add the gpio for USB low impedance alert
+
+		//LID_EN pull low to disable LID INT +
+		gpio_ctrl->USB_LID_EN = of_get_named_gpio(pdev->dev.of_node, "USB_LID_EN-gpios71", 0);
+		if (gpio_ctrl->USB_LID_EN > 0) {
+			CHG_DBG("%s: USB_LID_EN-gpios71 init successfully\n", __func__);
+			rc = gpio_request(gpio_ctrl->USB_LID_EN, "USB_LID_EN-gpios71");
+			if (rc < 0) {
+				CHG_DBG_E("%s: USB_LID_EN-gpios71 request failed\n", __func__);
+			}
+		} else {
+			CHG_DBG_E("%s: USB_LID_EN-gpios71 init failed\n", __func__);
+		}
+
+		rc = gpio_direction_output(gpio_ctrl->USB_LID_EN, 0);
+		if (rc)
+			CHG_DBG_E("%s: failed to pull-low USB_LID_EN\n", __func__);
+
+		//LID_EN pull low to disable LID INT -
+
 	if (0) {
 		/*gpio_ctrl->USB_LID_EN = of_get_named_gpio(pdev->dev.of_node, "USB_LID_EN-gpios71", 0);
 		if (gpio_ctrl->USB_LID_EN > 0) {

@@ -77,6 +77,7 @@ bool asus_flow_done_flag = 0;
 extern bool usb_alert_flag;
 extern bool demo_app_property_flag;
 extern bool smartchg_stop_flag;
+bool fg_batt_id_ready = 0;
 //ASUS BSP : Add variables ---
 extern void focal_usb_detection(bool plugin);		//ASUS BSP Nancy : notify touch cable in +++
 
@@ -1714,7 +1715,8 @@ int smblib_get_prop_batt_status(struct smb_charger *chg,
 	case FAST_CHARGE:
 	case FULLON_CHARGE:
 	case TAPER_CHARGE:
-		if (g_fgChip != NULL && smbchg_dev != NULL) {
+		if (fg_batt_id_ready && g_fgChip != NULL && smbchg_dev != NULL) {
+			CHG_DBG("%s: mutex_lock1\n", __func__);
 			mutex_lock(&g_fgChip->charge_status_lock);
 			if (g_fgChip->charge_full && !gauge_get_prop) {
 				val->intval = POWER_SUPPLY_STATUS_FULL;
@@ -1738,6 +1740,7 @@ int smblib_get_prop_batt_status(struct smb_charger *chg,
 			}
 			gauge_get_prop = 0;
 			mutex_unlock(&g_fgChip->charge_status_lock);
+			CHG_DBG("%s mutex_unlock1\n", __func__);
 		} else {
 			if (asus_CHG_TYPE == 200){
 				if(asus_get_prop_batt_capacity(smbchg_dev) <= 70) {
@@ -1760,7 +1763,8 @@ int smblib_get_prop_batt_status(struct smb_charger *chg,
 		break;
 	case DISABLE_CHARGE:
 		if (asus_adapter_detecting_flag) {
-			if (g_fgChip != NULL && smbchg_dev != NULL) {
+			if (fg_batt_id_ready && g_fgChip != NULL && smbchg_dev != NULL) {
+				CHG_DBG("%s mutex_lock2\n", __func__);
 				mutex_lock(&g_fgChip->charge_status_lock);
 				if (g_fgChip->charge_full && !gauge_get_prop) {
 					val->intval = POWER_SUPPLY_STATUS_FULL;
@@ -1774,6 +1778,7 @@ int smblib_get_prop_batt_status(struct smb_charger *chg,
 				}
 				gauge_get_prop = 0;
 				mutex_unlock(&g_fgChip->charge_status_lock);
+				CHG_DBG("%s mutex_unlock2\n", __func__);
 			} else {
 				printk("[BAT][CHG] Batt_status = NOT_CHARGING\n");
 				val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
@@ -3924,7 +3929,7 @@ set_current:
 	case ASUS_750K:
 		if (HVDCP_FLAG == 0) {
 			asus_CHG_TYPE = 750;
-			if (!LEGACY_CABLE_FLAG)
+			if (UFP_FLAG ==3 && !LEGACY_CABLE_FLAG)
 				usb_max_current = ICL_2850mA;
 			else
 				usb_max_current = ICL_1900mA;
@@ -4577,7 +4582,17 @@ static void smblib_handle_hvdcp_3p0_auth_done(struct smb_charger *chg,
 					"Couldn't force 9V HVDCP rc=%d\n", rc);
 		}
 	}
-
+	if (ASUS_ADAPTER_ID == ASUS_200K && asus_CHG_TYPE != 200
+		 && apsd_result->pst ==POWER_SUPPLY_TYPE_USB_HVDCP_3 ) {
+		CHG_DBG("%s: Fix HVDCP3 sign from ASUS_200K\n", __func__);
+		asus_CHG_TYPE = 200;
+		rc = smblib_masked_write(smbchg_dev, USBIN_CURRENT_LIMIT_CFG_REG,
+			USBIN_CURRENT_LIMIT_MASK, ICL_1900mA);
+		if (rc < 0)
+			CHG_DBG_E("%s: Failed to set USBIN_CURRENT_LIMIT\n", __func__);
+		asus_smblib_rerun_aicl(smbchg_dev);
+		power_supply_changed(chg->batt_psy);
+	}
 	smblib_dbg(chg, PR_INTERRUPT, "IRQ: hvdcp-3p0-auth-done rising; %s detected\n",
 		   apsd_result->name);
 	CHG_DBG("%s: start, IRQ: hvdcp-3p0-auth-done rising; %s detected\n", __func__, apsd_result->name);
