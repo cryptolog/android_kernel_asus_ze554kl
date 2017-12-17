@@ -33,6 +33,12 @@
 #include <linux/of_gpio.h>
 #include <linux/switch.h>
 #include <linux/wakelock.h>
+#include <linux/unistd.h>
+#include <linux/sched.h>
+#include <linux/slab.h>
+#include <linux/uaccess.h>
+#include <linux/kernel.h>
+#include <linux/fs.h>
 //ASUS BSP add include files ---
 
 //ASUS BSP : Add debug log +++
@@ -293,6 +299,9 @@ bool no_input_suspend_flag = 0;
 extern bool asus_flow_done_flag;
 bool demo_app_property_flag = 0;
 bool smartchg_stop_flag = 0;
+int BR_countrycode =0;
+
+
 
 extern void smblib_asus_monitor_start(struct smb_charger *chg, int time);
 extern bool asus_get_prop_usb_present(struct smb_charger *chg);
@@ -2514,6 +2523,131 @@ static const struct attribute_group asus_smblib_attr_group = {
 };
 // ASUS BSP Austin_T : Add attributes ---
 
+#define COUNTRY_CODE_PATH "/factory/COUNTRY"
+
+// WeiYu: BR country code +++
+/*
+static mm_segment_t oldfs;
+static void initKernelEnv(void)
+{
+    oldfs = get_fs();
+    set_fs(KERNEL_DS);
+}
+
+static void deinitKernelEnv(void)
+{
+    set_fs(oldfs);
+}
+*/
+
+/*
+// init/deinit KernelEnv seems cause watch dog, use other method.
+
+void read_BR_countrycode_work(struct work_struct *work)
+{
+    char buf[32];
+    int readlen = 0;
+	static int cnt=3;
+	struct file *fd;
+
+	initKernelEnv();
+
+	fd = filp_open(COUNTRY_CODE_PATH, O_RDONLY, 0644);
+	if (IS_ERR_OR_NULL(fd)) {
+        	printk("[BAT][CHG] OPEN (%s) failed\n", COUNTRY_CODE_PATH);
+		deinitKernelEnv();			
+		if(--cnt >= 0)
+			schedule_delayed_work(&smbchg_dev->read_countrycode_work, msecs_to_jiffies(2000));		//ASUS BSP Austin_T: adapter detect start
+
+		return;
+    }
+
+	readlen = fd->f_op->read(fd, buf, strlen(buf), &fd->f_pos);
+	if (readlen < 0) {
+		printk("[BAT][CHG] Read (%s) error\n", COUNTRY_CODE_PATH);
+		deinitKernelEnv();
+		filp_close(fd, NULL);
+		kfree(buf);
+		if(--cnt >= 0)
+			schedule_delayed_work(&smbchg_dev->read_countrycode_work, msecs_to_jiffies(2000));		//ASUS BSP Austin_T: adapter detect start
+		
+		return;
+	}
+	buf[readlen] = '\0';
+	if (strcmp(buf, "BR") == 0)
+		BR_countrycode = COUNTRY_BR;
+	else
+		BR_countrycode = COUNTRY_OTHER;
+
+	CHG_DBG("country code : %s, type %d\n", buf, BR_countrycode);
+		
+    filp_close(fd,NULL);
+}
+
+*/
+
+void read_BR_countrycode_work(struct work_struct *work)
+{
+
+	struct file *fp = NULL;
+	mm_segment_t old_fs;
+	loff_t pos_lsts = 0;
+	char buf[32];
+    	int readlen = 0;
+	int cnt = 5;
+
+	fp = filp_open(COUNTRY_CODE_PATH, O_RDONLY, 0);
+	if (IS_ERR_OR_NULL(fp)) {
+        	printk("[BAT][CHG] OPEN (%s) failed\n", COUNTRY_CODE_PATH);
+		if(--cnt >=0)
+			schedule_delayed_work(&smbchg_dev->read_countrycode_work, msecs_to_jiffies(3000));
+		return ;	/*No such file or directory*/
+	}
+
+	/* For purpose that can use read/write system call */
+	if (fp->f_op != NULL) {
+		old_fs = get_fs();
+		set_fs(KERNEL_DS);		
+			
+		pos_lsts = 0;
+		readlen = vfs_read(fp, buf,strlen(buf), &pos_lsts);
+		if(readlen < 0) {
+			set_fs(old_fs);
+			filp_close(fp, NULL);	
+			printk("[BAT][CHG] Readlen <0\n");
+			if(--cnt >=0)
+			schedule_delayed_work(&smbchg_dev->read_countrycode_work, msecs_to_jiffies(3000));
+			return ;
+		}			
+		buf[readlen]='\0';
+
+	} else {
+		printk("[BAT][CHG] Read (%s) error\n", COUNTRY_CODE_PATH);
+		if(--cnt >=0)
+			schedule_delayed_work(&smbchg_dev->read_countrycode_work, msecs_to_jiffies(3000));
+		return;
+	}
+
+	if (strcmp(buf, "BR") == 0)
+		BR_countrycode = COUNTRY_BR;
+	else
+		BR_countrycode = COUNTRY_OTHER;
+
+	CHG_DBG("country code : %s, type %d\n", buf, BR_countrycode);
+		
+
+	set_fs(old_fs);
+	filp_close(fp, NULL);	
+
+
+
+	return ;
+
+}
+
+// WeiYu: BR country code ---
+
+
 /*+++BSP Austin_T BMMI Adb Interface+++*/
 #define chargerIC_status_PROC_FILE	"driver/chargerIC_status"
 static struct proc_dir_entry *chargerIC_status_proc_file;
@@ -2981,6 +3115,7 @@ static int smb2_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&chg->asus_usb_alert_work, asus_usb_alert_work);
 	INIT_DELAYED_WORK(&chg->asus_low_impedance_work, asus_low_impedance_work);
 	INIT_DELAYED_WORK(&chg->asus_water_proof_work, asus_water_proof_work);
+	INIT_DELAYED_WORK(&chg->read_countrycode_work, read_BR_countrycode_work);	// WeiYu: BR country code
 
 //ASUS BSP : Request ADC_SW_EN-gpios59, ADCPWREN_PMI_GP1-gpios34 +++
 	gpio_ctrl->ADC_SW_EN = of_get_named_gpio(pdev->dev.of_node, "ADC_SW_EN-gpios59", 0);
@@ -3116,6 +3251,10 @@ static int smb2_probe(struct platform_device *pdev)
 	if (rc)
 		goto cleanup;
 //ASUS BSP Austin_T : CHG_ATTRs ---
+
+	// WeiYu: BR country code
+	schedule_delayed_work(&chg->read_countrycode_work, msecs_to_jiffies(8000));		
+
 
 	smb2_create_debugfs(chip);
 

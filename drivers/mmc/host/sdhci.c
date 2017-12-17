@@ -2418,7 +2418,13 @@ static int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 
 	if (host->ops->platform_execute_tuning) {
 		spin_unlock_irqrestore(&host->lock, flags);
+		/*
+		 * Make sure re-tuning won't get triggered for the CRC errors
+		 * occurred while executing tuning
+		 */
+		mmc_retune_disable(mmc);
 		err = host->ops->platform_execute_tuning(host, opcode);
+		mmc_retune_enable(mmc);
 		sdhci_runtime_pm_put(host);
 		return err;
 	}
@@ -2507,7 +2513,27 @@ static int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 			ctrl &= ~SDHCI_CTRL_EXEC_TUNING;
 			sdhci_writew(host, ctrl, SDHCI_HOST_CONTROL2);
 
+			sdhci_do_reset(host, SDHCI_RESET_CMD);
+			sdhci_do_reset(host, SDHCI_RESET_DATA);
+
 			err = -EIO;
+
+			if (cmd.opcode != MMC_SEND_TUNING_BLOCK_HS200)
+				goto out;
+
+			sdhci_writel(host, host->ier, SDHCI_INT_ENABLE);
+			sdhci_writel(host, host->ier, SDHCI_SIGNAL_ENABLE);
+
+			spin_unlock_irqrestore(&host->lock, flags);
+
+			memset(&cmd, 0, sizeof(cmd));
+			cmd.opcode = MMC_STOP_TRANSMISSION;
+			cmd.flags = MMC_RSP_SPI_R1B | MMC_RSP_R1B | MMC_CMD_AC;
+			cmd.busy_timeout = 50;
+			mmc_wait_for_cmd(mmc, &cmd, 0);
+
+			spin_lock_irqsave(&host->lock, flags);
+
 			goto out;
 		}
 

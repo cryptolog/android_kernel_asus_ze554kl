@@ -78,6 +78,7 @@ extern bool usb_alert_flag;
 extern bool demo_app_property_flag;
 extern bool smartchg_stop_flag;
 bool fg_batt_id_ready = 0;
+extern int BR_countrycode;
 //ASUS BSP : Add variables ---
 extern void focal_usb_detection(bool plugin);		//ASUS BSP Nancy : notify touch cable in +++
 
@@ -3607,7 +3608,8 @@ void jeita_rule(void)
 	bat_volt = asus_get_prop_batt_volt(smbchg_dev);
 	bat_capacity = asus_get_prop_batt_capacity(smbchg_dev);
 	state = smbchg_jeita_judge_state(state, bat_temp);
-	CHG_DBG("%s: batt_health = %s, temp = %d, volt = %d, ICL = 0x%x\n", __func__, health_type[bat_health], bat_temp, bat_volt, ICL_reg);
+	CHG_DBG("%s: batt_health = %s, temp = %d, volt = %d, ICL = 0x%x, COUT %d\n",
+		__func__, health_type[bat_health], bat_temp, bat_volt, ICL_reg, BR_countrycode);
 
 	switch (state) {
 	case JEITA_STATE_LESS_THAN_0:
@@ -3964,8 +3966,11 @@ set_current:
 			usb_max_current = ICL_2850mA;
 		else if (HVDCP_FLAG == 0 && UFP_FLAG == 2 && !LEGACY_CABLE_FLAG)
 			usb_max_current = ICL_1425mA;
+		else if(BR_countrycode == COUNTRY_BR && HVDCP_FLAG == 0 && UFP_FLAG == 1)
+			usb_max_current = ICL_1900mA;			
 		else
 			usb_max_current = ICL_950mA;
+
 		break;
 	case ADC_NOT_READY:
 		usb_max_current = ICL_950mA;

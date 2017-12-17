@@ -27,7 +27,7 @@
 #include "kgsl_pwrscale.h"
 #include "kgsl_device.h"
 #include "kgsl_trace.h"
-extern enum DEVICE_HWID g_ASUS_prjID;
+
 #define KGSL_PWRFLAGS_POWER_ON 0
 #define KGSL_PWRFLAGS_CLK_ON   1
 #define KGSL_PWRFLAGS_AXI_ON   2
@@ -2101,12 +2101,8 @@ int kgsl_pwrctrl_init(struct kgsl_device *device)
 	}
 
 	/* Initialize the user and thermal clock constraints */
-	
-	//BSP Clay: init gpu pwrlevel to 1 at 630 +++
-	//if(g_ASUS_prjID == 0x7)
-	    //pwr->max_pwrlevel = 1;
-	
-	//BSP Clay: init gpu pwrlevel to 1 at 630 ---
+
+	pwr->max_pwrlevel = 0;
 	pwr->min_pwrlevel = pwr->num_pwrlevels - 2;
 	pwr->thermal_pwrlevel = 0;
 
@@ -2351,9 +2347,24 @@ void kgsl_idle_check(struct work_struct *work)
 		   || device->state ==  KGSL_STATE_NAP) {
 
 		if (!atomic_read(&device->active_cnt)) {
+			spin_lock(&device->submit_lock);
+			if (device->submit_now) {
+				spin_unlock(&device->submit_lock);
+				goto done;
+			}
+			/* Don't allow GPU inline submission in SLUMBER */
+			if (requested_state == KGSL_STATE_SLUMBER)
+				device->slumber = true;
+			spin_unlock(&device->submit_lock);
+
 			ret = kgsl_pwrctrl_change_state(device,
 					device->requested_state);
 			if (ret == -EBUSY) {
+				if (requested_state == KGSL_STATE_SLUMBER) {
+					spin_lock(&device->submit_lock);
+					device->slumber = false;
+					spin_unlock(&device->submit_lock);
+				}
 				/*
 				 * If the GPU is currently busy, restore
 				 * the requested state and reschedule
@@ -2364,7 +2375,7 @@ void kgsl_idle_check(struct work_struct *work)
 				kgsl_schedule_work(&device->idle_check_ws);
 			}
 		}
-
+done:
 		if (!ret)
 			kgsl_pwrctrl_request_state(device, KGSL_STATE_NONE);
 
@@ -2793,6 +2804,13 @@ static void kgsl_pwrctrl_set_state(struct kgsl_device *device,
 	trace_kgsl_pwr_set_state(device, state);
 	device->state = state;
 	device->requested_state = KGSL_STATE_NONE;
+
+	spin_lock(&device->submit_lock);
+	if (state == KGSL_STATE_SLUMBER || state == KGSL_STATE_SUSPEND)
+		device->slumber = true;
+	else
+		device->slumber = false;
+	spin_unlock(&device->submit_lock);
 }
 
 static void kgsl_pwrctrl_request_state(struct kgsl_device *device,

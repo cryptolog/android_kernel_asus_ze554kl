@@ -69,6 +69,11 @@ enum print_reason {
 #define VCONN_MAX_ATTEMPTS	3
 #define OTG_MAX_ATTEMPTS	3
 
+//WeiYu +++
+#define COUNTRY_BR	1
+#define COUNTRY_OTHER	2
+//WeiYu ---
+
 enum smb_mode {
 	PARALLEL_MASTER = 0,
 	PARALLEL_SLAVE,
@@ -300,7 +305,7 @@ struct smb_charger {
 	struct delayed_work asus_low_impedance_work;
 	struct delayed_work asus_water_proof_work;
 	struct delayed_work asus_batt_RTC_work;
-
+	struct delayed_work read_countrycode_work;
 	/* cached status */
 	int			voltage_min_uv;
 	int			voltage_max_uv;
