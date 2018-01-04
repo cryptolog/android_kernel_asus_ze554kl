@@ -45,9 +45,11 @@ static bool first_panel_power_on = true;
 //#endif
 struct mdss_panel_data *g_mdss_pdata;
 //ASUS BSP Display ---
+#if defined(ASUS_ZE554KL_BUILD) || defined(ASUS_ZE554KL_PROJECT)
 extern int fts_ts_suspend(void);
 extern bool fts_gesture_check(void);
 extern bool asus_rmi4_gesture_check(void);
+#endif
 
 /* Master structure to hold all the information about the DSI/panel */
 static struct mdss_dsi_data *mdss_dsi_res;
@@ -381,18 +383,18 @@ static int mdss_dsi_panel_power_off(struct mdss_panel_data *pdata)
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 	bool gesture_en = false;
 
+#if defined(ASUS_ZE554KL_BUILD) || defined(ASUS_ZE554KL_PROJECT)
 	if (g_asus_lcdID == TITAN_LCD_TM)
 		gesture_en = fts_gesture_check();
 	else
 		gesture_en = asus_rmi4_gesture_check();
+#endif
 
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
 		ret = -EINVAL;
 		goto end;
 	}
-	if (pdata->panel_info.esd_crash)
-		gesture_en = false;
 
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
@@ -402,14 +404,18 @@ static int mdss_dsi_panel_power_off(struct mdss_panel_data *pdata)
 /*#if PANEL_SLEEP_MODE_ENABLE
 	if (g_asus_lcdID == TITAN_LCD_TM) {
 #endif*/
-	//don't pull reset low for both BOE & TM panel
-	/*if (g_asus_lcdID == TITAN_LCD_TM || !gesture_en) {
+
+	//don't pull reset low for both BOE & TM panel of Titan
+#if defined(ASUS_ZE602KL_PROJECT) || defined(ASUS_ZE602KL_BUILD)
+	if (!gesture_en) {
 		ret = mdss_dsi_panel_reset(pdata, 0);
 		if (ret) {
 			pr_warn("%s: Panel reset failed. rc=%d\n", __func__, ret);
 			ret = 0;
 		}
-	}*/
+	}
+#endif
+
 	if (gpio_is_valid(ctrl_pdata->disp_en_gpio)) {
 		gpio_free(ctrl_pdata->disp_en_gpio);
 	}
@@ -426,12 +432,12 @@ static int mdss_dsi_panel_power_off(struct mdss_panel_data *pdata)
 
 //#if !PANEL_SLEEP_MODE_ENABLE
 	if (!gesture_en) {
-	ret = msm_dss_enable_vreg(
-		ctrl_pdata->panel_power_data.vreg_config,
-		ctrl_pdata->panel_power_data.num_vreg, 0);
-	if (ret)
-		pr_err("%s: failed to disable vregs for %s\n",
-			__func__, __mdss_dsi_pm_name(DSI_PANEL_PM));
+		ret = msm_dss_enable_vreg(
+			ctrl_pdata->panel_power_data.vreg_config,
+			ctrl_pdata->panel_power_data.num_vreg, 0);
+		if (ret)
+			pr_err("%s: failed to disable vregs for %s\n",
+				__func__, __mdss_dsi_pm_name(DSI_PANEL_PM));
 	}
 //#endif
 	pr_err("[Display] %s: ---\n", __func__);
@@ -446,20 +452,19 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata)
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 	bool gesture_en = false;
 
+#if defined(ASUS_ZE554KL_BUILD) || defined(ASUS_ZE554KL_PROJECT)
 	if (!first_panel_power_on) {
 		if (g_asus_lcdID == TITAN_LCD_TM)
 			gesture_en = fts_gesture_check();
 		else
 			gesture_en = asus_rmi4_gesture_check();
 	}
+#endif
 
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
 		return -EINVAL;
 	}
-
-	if (pdata->panel_info.esd_crash)
-		gesture_en = false;
 
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
@@ -490,6 +495,7 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata)
 	 * bootloader. This needs to be done irresepective of whether
 	 * the lp11_init flag is set or not.
 	 */
+#if defined(ASUS_ZE554KL_BUILD) || defined(ASUS_ZE554KL_PROJECT)
 	if (g_asus_lcdID == TITAN_LCD_TM && (pdata->panel_info.cont_splash_enabled ||
 		!pdata->panel_info.mipi.lp11_init)) {
 		if (mdss_dsi_pinctrl_set_state(ctrl_pdata, true))
@@ -499,6 +505,17 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata)
 			pr_err("%s: Panel reset failed. rc=%d\n",
 					__func__, ret);
 	}
+#else
+	if ((pdata->panel_info.cont_splash_enabled ||
+		!pdata->panel_info.mipi.lp11_init)) {
+		if (mdss_dsi_pinctrl_set_state(ctrl_pdata, true))
+			pr_debug("reset enable: pinctrl not enabled\n");
+		ret = mdss_dsi_panel_reset(pdata, 1);
+		if (ret)
+			pr_err("%s: Panel reset failed. rc=%d\n",
+					__func__, ret);
+	}
+#endif
 
 	if (first_panel_power_on)
 		first_panel_power_on = false;
@@ -732,7 +749,11 @@ static int mdss_dsi_get_dt_vreg_data(struct device *dev,
 			mp->vreg_config[i].post_off_sleep = tmp;
 		}
 
-		pr_debug("%s: %s min=%d, max=%d, enable=%d, disable=%d, preonsleep=%d, postonsleep=%d, preoffsleep=%d, postoffsleep=%d\n",
+		mp->vreg_config[i].lp_disable_allowed =
+			of_property_read_bool(supply_node,
+			"qcom,supply-lp-mode-disable-allowed");
+
+		pr_debug("%s: %s min=%d, max=%d, enable=%d, disable=%d, preonsleep=%d, postonsleep=%d, preoffsleep=%d, postoffsleep=%d lp_disable_allowed=%d\n",
 			__func__,
 			mp->vreg_config[i].vreg_name,
 			mp->vreg_config[i].min_voltage,
@@ -742,8 +763,8 @@ static int mdss_dsi_get_dt_vreg_data(struct device *dev,
 			mp->vreg_config[i].pre_on_sleep,
 			mp->vreg_config[i].post_on_sleep,
 			mp->vreg_config[i].pre_off_sleep,
-			mp->vreg_config[i].post_off_sleep
-			);
+			mp->vreg_config[i].post_off_sleep,
+			mp->vreg_config[i].lp_disable_allowed);
 		++i;
 	}
 
@@ -838,6 +859,11 @@ static ssize_t mdss_dsi_cmd_state_write(struct file *file,
 {
 	int *link_state = file->private_data;
 	char *input;
+
+	if (!count) {
+		pr_err("%s: Zero bytes to be written\n", __func__);
+		return -EINVAL;
+	}
 
 	input = kmalloc(count, GFP_KERNEL);
 	if (!input) {
@@ -970,10 +996,15 @@ static ssize_t mdss_dsi_cmd_write(struct file *file, const char __user *p,
 
 	/* Writing in batches is possible */
 	ret = simple_write_to_buffer(string_buf, blen, ppos, p, count);
+	if (ret < 0) {
+		pr_err("%s: Failed to copy data\n", __func__);
+		mutex_unlock(&pcmds->dbg_mutex);
+		return -EINVAL;
+	}
 
-	string_buf[blen] = '\0';
+	string_buf[ret] = '\0';
 	pcmds->string_buf = string_buf;
-	pcmds->sblen = blen;
+	pcmds->sblen = count;
 	mutex_unlock(&pcmds->dbg_mutex);
 	return ret;
 }
@@ -1403,7 +1434,11 @@ static int mdss_dsi_off(struct mdss_panel_data *pdata, int power_state)
 	mdss_dsi_clk_ctrl(ctrl_pdata, ctrl_pdata->dsi_clk_handle,
 			  MDSS_DSI_CORE_CLK, MDSS_DSI_CLK_OFF);
 	msleep(10);
+
+#if defined(ASUS_ZE554KL_BUILD) || defined(ASUS_ZE554KL_PROJECT)
 	fts_ts_suspend();
+#endif
+
 panel_power_ctrl:
 	ret = mdss_dsi_panel_power_ctrl(pdata, power_state);
 	if (ret) {
@@ -1617,11 +1652,19 @@ int mdss_dsi_on(struct mdss_panel_data *pdata)
 	 * Issue hardware reset line after enabling the DSI clocks and data
 	 * data lanes for LP11 init
 	 */
+#if defined(ASUS_ZE554KL_BUILD) || defined(ASUS_ZE554KL_PROJECT)
 	if (g_asus_lcdID == TITAN_LCD_TM && mipi->lp11_init) {
 		if (mdss_dsi_pinctrl_set_state(ctrl_pdata, true))
 			pr_debug("reset enable: pinctrl not enabled\n");
 		mdss_dsi_panel_reset(pdata, 1);
 	}
+#else
+	if (mipi->lp11_init) {
+		if (mdss_dsi_pinctrl_set_state(ctrl_pdata, true))
+			pr_debug("reset enable: pinctrl not enabled\n");
+		mdss_dsi_panel_reset(pdata, 1);
+	}
+#endif
 
 	if (mipi->init_delay)
 		usleep_range(mipi->init_delay, mipi->init_delay);
@@ -1882,7 +1925,7 @@ static int mdss_dsi_post_panel_on(struct mdss_panel_data *pdata)
 	return 0;
 }
 
-irqreturn_t test_hw_vsync_handler(int irq, void *data)
+static irqreturn_t test_hw_vsync_handler(int irq, void *data)
 {
 	struct mdss_panel_data *pdata = (struct mdss_panel_data *)data;
 
@@ -2158,7 +2201,7 @@ static int __mdss_dsi_dfps_update_clks(struct mdss_panel_data *pdata,
 {
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 	struct mdss_dsi_ctrl_pdata *sctrl_pdata = NULL;
-	struct mdss_panel_info *pinfo, *spinfo;
+	struct mdss_panel_info *pinfo, *spinfo = NULL;
 	int rc = 0;
 
 	if (pdata == NULL) {
@@ -2777,8 +2820,6 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 				ctrl_pdata->update_phy_timing);
 
 		rc = mdss_dsi_on(pdata);
-		mdss_dsi_op_mode_config(pdata->panel_info.mipi.mode,
-							pdata);
 		break;
 	case MDSS_EVENT_UNBLANK:
 		if (ctrl_pdata->on_cmds.link_state == DSI_LP_MODE)
@@ -3342,21 +3383,6 @@ end:
 	return rc;
 }
 
-static void mdss_dsi_ctrl_validate_lane_swap_config(
-	struct mdss_dsi_ctrl_pdata *ctrl)
-{
-	struct mipi_panel_info *mipi = &ctrl->panel_data.panel_info.mipi;
-
-	if (!mipi->data_lane0)
-		ctrl->lane_map[DSI_LOGICAL_LANE_0] = DSI_PHYSICAL_LANE_INVALID;
-	if (!mipi->data_lane1)
-		ctrl->lane_map[DSI_LOGICAL_LANE_1] = DSI_PHYSICAL_LANE_INVALID;
-	if (!mipi->data_lane2)
-		ctrl->lane_map[DSI_LOGICAL_LANE_2] = DSI_PHYSICAL_LANE_INVALID;
-	if (!mipi->data_lane3)
-		ctrl->lane_map[DSI_LOGICAL_LANE_3] = DSI_PHYSICAL_LANE_INVALID;
-}
-
 static int mdss_dsi_ctrl_validate_config(struct mdss_dsi_ctrl_pdata *ctrl)
 {
 	int rc = 0;
@@ -3365,8 +3391,6 @@ static int mdss_dsi_ctrl_validate_config(struct mdss_dsi_ctrl_pdata *ctrl)
 		rc = -EINVAL;
 		goto error;
 	}
-
-	mdss_dsi_ctrl_validate_lane_swap_config(ctrl);
 
 	/*
 	 * check to make sure that the byte interface clock is specified for
@@ -3513,9 +3537,10 @@ static int mdss_dsi_ctrl_probe(struct platform_device *pdev)
 			hw_vsync_handler, IRQF_TRIGGER_FALLING,
 			"VSYNC_GPIO", ctrl_pdata);
 		if (rc) {
-			pr_err("TE request_irq failed.\n");
+			pr_err("%s: TE request_irq failed for ESD\n", __func__);
 			goto error_shadow_clk_deinit;
 		}
+		te_irq_registered = 1;
 		disable_irq(gpio_to_irq(ctrl_pdata->disp_te_gpio));
 	}
 
@@ -4384,6 +4409,15 @@ static int mdss_dsi_parse_gpio_params(struct platform_device *ctrl_pdev,
 	ctrl_pdata->bklt_en_gpio_invert =
 			of_property_read_bool(ctrl_pdev->dev.of_node,
 				"qcom,platform-bklight-en-gpio-invert");
+
+	ctrl_pdata->avdd_en_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
+			"qcom,platform-avdd-en-gpio", 0);
+	if (!gpio_is_valid(ctrl_pdata->avdd_en_gpio))
+		pr_info("%s: avdd_en gpio not specified\n", __func__);
+
+	ctrl_pdata->avdd_en_gpio_invert =
+			of_property_read_bool(ctrl_pdev->dev.of_node,
+				"qcom,platform-avdd-en-gpio-invert");
 
 	ctrl_pdata->rst_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
 			 "qcom,platform-reset-gpio", 0);

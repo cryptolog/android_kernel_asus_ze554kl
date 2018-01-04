@@ -51,6 +51,7 @@ enum {
 	FM_SLIM8,
 	SLIM_MAX,
 };
+
 #if 0
 /*TDM default offset currently only supporting TDM_RX_0 and TDM_TX_0 */
 static unsigned int tdm_slot_offset[TDM_PORT_MAX][TDM_SLOT_OFFSET_MAX] = {
@@ -64,6 +65,7 @@ static unsigned int tdm_slot_offset[TDM_PORT_MAX][TDM_SLOT_OFFSET_MAX] = {
 	{AFE_SLOT_MAPPING_OFFSET_INVALID},/* TX_7 | RX_7 */
 };
 #endif
+
 static struct afe_clk_set int_mi2s_clk[INT_MI2S_MAX] = {
 	{
 		AFE_API_VERSION_I2S_CONFIG,
@@ -1554,10 +1556,6 @@ static int msm_tdm_snd_hw_params(struct snd_pcm_substream *substream,
 end:
 	return ret;
 }
-
-static struct snd_soc_ops msm_tdm_be_ops = {
-	.hw_params = msm_tdm_snd_hw_params
-};
 #endif
 
 static int msm_snd_card_late_probe(struct snd_soc_card *card)
@@ -1589,6 +1587,12 @@ static int msm_snd_card_late_probe(struct snd_soc_card *card)
 
 	return ret;
 }
+
+#if 0
+static struct snd_soc_ops msm_tdm_be_ops = {
+	.hw_params = msm_tdm_snd_hw_params
+};
+#endif
 
 static struct snd_soc_ops msm_wcn_ops = {
 	.hw_params = msm_wcn_hw_params,
@@ -2184,10 +2188,10 @@ static struct snd_soc_dai_link msm_int_dai[] = {
 		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA15,
 	},
 	{/* hw:x,33 */
-		.name = MSM_DAILINK_NAME(Compress9),
-		.stream_name = "Compress9",
+		.name = MSM_DAILINK_NAME(ULL_NOIRQ_2),
+		.stream_name = "MM_NOIRQ_2",
 		.cpu_dai_name	= "MultiMedia16",
-		.platform_name  = "msm-compress-dsp",
+		.platform_name  = "msm-pcm-dsp-noirq",
 		.dynamic = 1,
 		.dpcm_capture = 1,
 		.dpcm_playback = 1,
@@ -2483,7 +2487,8 @@ static struct snd_soc_dai_link msm_int_be_dai[] = {
 		.be_hw_params_fixup = msm_common_be_hw_params_fixup,
 		.ignore_suspend = 1,
 	},
-	/*{
+#if 0
+	{
 		.name = LPASS_BE_PRI_TDM_RX_0,
 		.stream_name = "Primary TDM0 Playback",
 		.cpu_dai_name = "msm-dai-q6-tdm.36864",
@@ -2594,7 +2599,8 @@ static struct snd_soc_dai_link msm_int_be_dai[] = {
 		.be_hw_params_fixup = msm_common_be_hw_params_fixup,
 		.ops = &msm_tdm_be_ops,
 		.ignore_suspend = 1,
-	},*/
+	},
+#endif
 };
 
 static struct snd_soc_dai_link msm_mi2s_be_dai_links[] = {

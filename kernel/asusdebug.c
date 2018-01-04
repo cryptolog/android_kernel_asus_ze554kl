@@ -33,26 +33,23 @@ char evtlog_warm_reset_reason[100];
 extern u16 warm_reset_value;
 // ASUS_BSP ---
 
+#ifdef CONFIG_PON_EVT_LOG
+char evtlog_pon_dump[100];
+#endif
+
 #ifdef CONFIG_HAS_EARLYSUSPEND
 int entering_suspend = 0;
 #endif
 phys_addr_t PRINTK_BUFFER_PA = 0xA0000000;
 void *PRINTK_BUFFER_VA;
 phys_addr_t RTB_BUFFER_PA = 0xA0000000 + SZ_1M;
-ulong logcat_buffer_index = 0; /* ASUS_BSP Paul +++ */
+ulong logcat_buffer_index = 0; /* ASUS_BSP For upload crash log to DroBox issue */
 extern struct timezone sys_tz;
 #define RT_MUTEX_HAS_WAITERS    1UL
 #define RT_MUTEX_OWNER_MASKALL  1UL
 struct mutex fake_mutex;
 struct completion fake_completion;
 struct rt_mutex fake_rtmutex;
-
-/* ASUS_BSP Paul +++ */
-static struct kset *dropbox_uevent_kset;
-static struct kobject *ssr_reason_kobj;
-static struct work_struct send_ssr_reason_dropbox_uevent_work;
-static void send_ssr_reason_dropbox_uevent_work_handler(struct work_struct *work);
-/* ASUS_BSP Paul --- */
 
 int asus_rtc_read_time(struct rtc_time *tm)
 {
@@ -768,15 +765,20 @@ void save_last_shutdown_log(char *filename)
     char buffer[] = {"Kernel panic"};
     int i;
     // ASUS_BSP ---
-	/* ASUS_BSP Paul +++ */
+	/* ASUS_BSP For upload crash log to DroBox issue */
 	char *last_logcat_buffer;
+	ulong *printk_buffer_slot2_addr = (ulong *)PRINTK_BUFFER_SLOT2;
 	int fd_kmsg, fd_logcat;
-	/* ASUS_BSP Paul --- */
+	ulong printk_buffer_index;
+	/* ASUS_BSP --- */
 
 	t = cpu_clock(0);
 	nanosec_rem = do_div(t, 1000000000);
 	last_shutdown_log = (char *)PRINTK_BUFFER_VA;
-	last_logcat_buffer = (char *)LOGCAT_BUFFER; /* ASUS_BSP Paul +++ */
+	/* ASUS_BSP For upload crash log to DroBox issue */
+	last_logcat_buffer = (char *)LOGCAT_BUFFER;
+	printk_buffer_slot2_addr = (ulong *)PRINTK_BUFFER_SLOT2;
+	/* ASUS_BSP --- */
 	sprintf(messages, ASUS_ASDF_BASE_DIR "LastShutdown_%lu.%06lu.txt",
 		(unsigned long)t,
 		nanosec_rem / 1000);
@@ -800,22 +802,39 @@ void save_last_shutdown_log(char *filename)
 	} else {
 		printk("[ASDF] save_last_shutdown_error: [%d]\n", file_handle);
 	}
-	/* ASUS_BSP Paul +++ */
-	fd_kmsg = sys_open("/asdf/last_kmsg", O_CREAT | O_RDWR | O_SYNC, S_IRUGO);
-	if (!IS_ERR((const void *)(ulong)fd_kmsg)) {
-		sys_write(fd_kmsg, (unsigned char *)last_shutdown_log, PRINTK_BUFFER_SLOT_SIZE);
-		sys_close(fd_kmsg);
-	} else {
-		printk("[ASDF] failed to save last shutdown log to last_kmsg\n");
+	/* ASUS_BSP For upload crash log to DroBox issue */
+	printk_buffer_index = *(printk_buffer_slot2_addr + 1);
+	if ((printk_buffer_index < PRINTK_BUFFER_SLOT_SIZE) && (LAST_KMSG_SIZE < SZ_128K)) {
+		fd_kmsg = sys_open("/asdf/last_kmsg_16K", O_CREAT | O_RDWR | O_SYNC, S_IRUGO);
+		if (!IS_ERR((const void *)(ulong)fd_kmsg)) {
+			char *buf = kzalloc(LAST_KMSG_SIZE, GFP_ATOMIC);
+			if (!buf) {
+				printk("[ASDF] failed to allocate buffer for last_kmsg\n");
+			} else {
+				if (printk_buffer_index > LAST_KMSG_SIZE) {
+					memcpy(buf, last_shutdown_log + printk_buffer_index - LAST_KMSG_SIZE, LAST_KMSG_SIZE);
+				} else {
+					ulong part1 = LAST_KMSG_SIZE - printk_buffer_index;
+					ulong part2 = printk_buffer_index;
+					memcpy(buf, last_shutdown_log + PRINTK_BUFFER_SLOT_SIZE - part1, part1);
+					memcpy(buf + part1, last_shutdown_log, part2);
+				}
+				sys_write(fd_kmsg, buf, LAST_KMSG_SIZE);
+				kfree(buf);
+			}
+			sys_close(fd_kmsg);
+		} else {
+			printk("[ASDF] failed to save last shutdown log to last_kmsg\n");
+		}
 	}
-	fd_logcat = sys_open("/asdf/last_logcat", O_CREAT | O_RDWR | O_SYNC, S_IRUGO);
+	fd_logcat = sys_open("/asdf/last_logcat_16K", O_CREAT | O_RDWR | O_SYNC, S_IRUGO);
 	if (!IS_ERR((const void *)(ulong)fd_logcat)) {
 		sys_write(fd_logcat, (unsigned char *)last_logcat_buffer, LOGCAT_BUFFER_SIZE);
 		sys_close(fd_logcat);
 	} else {
 		printk("[ASDF] failed to save last logcat to last_logcat\n");
 	}
-	/* ASUS_BSP Paul --- */
+	/* ASUS_BSP --- */
 	deinitKernelEnv();
 }
 
@@ -870,9 +889,21 @@ static int g_bEventlogEnable = 1;
 static char g_Asus_Eventlog[ASUS_EVTLOG_MAX_ITEM][ASUS_EVTLOG_STR_MAXLEN];
 static int g_Asus_Eventlog_read = 0;
 static int g_Asus_Eventlog_write = 0;
+//[+++]Record the important power event
+static struct workqueue_struct *ASUSErclog_workQueue;
+static int g_hfileErclog = -MAX_ERRNO;
+static char g_Asus_Erclog[ASUS_ERCLOG_MAX_ITEM][ASUS_ERCLOG_STR_MAXLEN];
+static char g_Asus_Erclog_filelist[ASUS_ERCLOG_MAX_ITEM][ASUS_ERCLOG_FILENAME_MAXLEN];
+static int g_Asus_Erclog_read = 0;
+static int g_Asus_Erclog_write = 0;
+//[---]Record the important power event
 
 static void do_write_event_worker(struct work_struct *work);
 static DECLARE_WORK(eventLog_Work, do_write_event_worker);
+//[+++]Record the important power event
+static void do_write_erc_worker(struct work_struct *work);
+static DECLARE_WORK(ercLog_Work, do_write_erc_worker);
+//[---]Record the important power event
 
 /*ASUS-BBSP SubSys Health Record+++*/
 static char g_SubSys_W_Buf[SUBSYS_W_MAXLEN];
@@ -887,25 +918,27 @@ static struct completion SubSys_C_Complete;
 /*ASUS-BBSP SubSys Health Record---*/
 
 static struct mutex mA;
+static struct mutex mA_erc;//Record the important power event
 #define AID_SDCARD_RW 1015
 static void do_write_event_worker(struct work_struct *work)
 {
-	char buffer[256];
+	char buffer[320];
 
-	memset(buffer, 0, sizeof(char) * 256);
+	memset(buffer, 0, sizeof(char) * 320);
+	
+	initKernelEnv();
 
 	if (IS_ERR((const void *)(ulong)g_hfileEvtlog)) {
 		long size;
-
-		g_hfileEvtlog = sys_open(ASUS_EVTLOG_PATH ".txt", O_CREAT | O_RDWR | O_SYNC, 0444);
-		sys_chown(ASUS_EVTLOG_PATH ".txt", AID_SDCARD_RW, AID_SDCARD_RW);
-
+		
+		g_hfileEvtlog = sys_open(ASUS_EVTLOG_PATH ".txt", O_CREAT | O_RDWR | O_SYNC, 0666);
+		//sys_chown(ASUS_EVTLOG_PATH ".txt", AID_SDCARD_RW, AID_SDCARD_RW);
 		size = sys_lseek(g_hfileEvtlog, 0, SEEK_END);
 		if (size >= SZ_2M) {
 			sys_close(g_hfileEvtlog);
 			sys_rmdir(ASUS_EVTLOG_PATH "_old.txt");
 			sys_rename(ASUS_EVTLOG_PATH ".txt", ASUS_EVTLOG_PATH "_old.txt");
-			g_hfileEvtlog = sys_open(ASUS_EVTLOG_PATH ".txt", O_CREAT | O_RDWR | O_SYNC, 0444);
+			g_hfileEvtlog = sys_open(ASUS_EVTLOG_PATH ".txt", O_CREAT | O_RDWR | O_SYNC, 0666);
 		}
         // ASUS_BSP +++
         if (warm_reset_value) {
@@ -928,6 +961,14 @@ static void do_write_event_worker(struct work_struct *work)
         }
         // ASUS_BSP ---
 		sys_write(g_hfileEvtlog, buffer, strlen(buffer));
+
+	#ifdef CONFIG_PON_EVT_LOG
+		sys_fsync(g_hfileEvtlog);
+		snprintf(buffer, sizeof(buffer),
+		        "[PON Dump] %s \n",evtlog_pon_dump);
+		sys_write(g_hfileEvtlog, buffer, strlen(buffer));
+	#endif
+
 		sys_close(g_hfileEvtlog);
 	}
 	if (!IS_ERR((const void *)(ulong)g_hfileEvtlog)) {
@@ -935,15 +976,15 @@ static void do_write_event_worker(struct work_struct *work)
 		char *pchar;
 		long size;
 
-		g_hfileEvtlog = sys_open(ASUS_EVTLOG_PATH ".txt", O_CREAT | O_RDWR | O_SYNC, 0444);
-		sys_chown(ASUS_EVTLOG_PATH ".txt", AID_SDCARD_RW, AID_SDCARD_RW);
+		g_hfileEvtlog = sys_open(ASUS_EVTLOG_PATH ".txt", O_CREAT | O_RDWR | O_SYNC, 0666);
+		//sys_chown(ASUS_EVTLOG_PATH ".txt", AID_SDCARD_RW, AID_SDCARD_RW);
 
 		size = sys_lseek(g_hfileEvtlog, 0, SEEK_END);
 		if (size >= SZ_2M) {
 			sys_close(g_hfileEvtlog);
 			sys_rmdir(ASUS_EVTLOG_PATH "_old.txt");
 			sys_rename(ASUS_EVTLOG_PATH ".txt", ASUS_EVTLOG_PATH "_old.txt");
-			g_hfileEvtlog = sys_open(ASUS_EVTLOG_PATH ".txt", O_CREAT | O_RDWR | O_SYNC, 0444);
+			g_hfileEvtlog = sys_open(ASUS_EVTLOG_PATH ".txt", O_CREAT | O_RDWR | O_SYNC, 0666);
 		}
 
 		while (g_Asus_Eventlog_read != g_Asus_Eventlog_write) {
@@ -966,6 +1007,7 @@ static void do_write_event_worker(struct work_struct *work)
 		}
 		sys_close(g_hfileEvtlog);
 	}
+	deinitKernelEnv();
 }
 
 extern struct timezone sys_tz;
@@ -1007,6 +1049,114 @@ void ASUSEvtlog(const char *fmt, ...)
 	}
 }
 EXPORT_SYMBOL(ASUSEvtlog);
+
+//[+++]Record the important power event
+static void do_write_erc_worker(struct work_struct *work)
+{
+    int str_len;
+    char log_body[ASUS_ERCLOG_STR_MAXLEN];
+    char filepath[ASUS_ERCLOG_FILENAME_MAXLEN];
+    char filepath_old[ASUS_ERCLOG_FILENAME_MAXLEN];
+    long size;
+    int flag_read = -1;
+    int flag_write = -1;
+
+    while (g_Asus_Erclog_read != g_Asus_Erclog_write) {
+        memset(log_body, 0, ASUS_ERCLOG_STR_MAXLEN);
+        memset(filepath, 0, sizeof(char)*ASUS_ERCLOG_FILENAME_MAXLEN);
+        memset(filepath_old, 0, sizeof(char)*ASUS_ERCLOG_FILENAME_MAXLEN);
+
+        mutex_lock(&mA_erc);
+        flag_read = g_Asus_Erclog_read;
+        flag_write = g_Asus_Erclog_write;
+
+        memcpy(log_body, g_Asus_Erclog[g_Asus_Erclog_read], ASUS_ERCLOG_STR_MAXLEN);
+        snprintf(filepath, ASUS_ERCLOG_FILENAME_MAXLEN, "%s%s.txt", ASUS_ASDF_BASE_DIR, g_Asus_Erclog_filelist[g_Asus_Erclog_read]);
+        snprintf(filepath_old, ASUS_ERCLOG_FILENAME_MAXLEN, "%s%s_old.txt", ASUS_ASDF_BASE_DIR, g_Asus_Erclog_filelist[g_Asus_Erclog_read]);
+        memset(g_Asus_Erclog[g_Asus_Erclog_read], 0, ASUS_ERCLOG_STR_MAXLEN);
+        memset(g_Asus_Erclog_filelist[g_Asus_Erclog_read], 0, ASUS_ERCLOG_FILENAME_MAXLEN);
+
+        g_Asus_Erclog_read++;
+        g_Asus_Erclog_read %= ASUS_ERCLOG_MAX_ITEM;
+        mutex_unlock(&mA_erc);
+
+        str_len = strlen(log_body);
+		if(str_len == 0) continue;
+        if (str_len > 0 && log_body[str_len - 1] != '\n' ) {
+            if(str_len + 1 >= ASUS_ERCLOG_STR_MAXLEN)
+                str_len = ASUS_ERCLOG_STR_MAXLEN - 2;
+            log_body[str_len] = '\n';
+            log_body[str_len + 1] = '\0';
+        }
+
+        pr_debug("flag_read = %d, flag_write = %d, filepath = %s\n", flag_read, flag_write, filepath);
+        g_hfileErclog = sys_open(filepath, O_CREAT|O_RDWR|O_SYNC, 0444);
+        sys_chown(filepath, AID_SDCARD_RW, AID_SDCARD_RW);
+
+        if (!IS_ERR((const void *)(ulong)g_hfileEvtlog)) {
+            size = sys_lseek(g_hfileErclog, 0, SEEK_END);
+            if (size >= 5000) {    //limit 5KB each file
+                sys_close(g_hfileErclog);
+                sys_rmdir(filepath_old);
+                sys_rename(filepath, filepath_old);
+                g_hfileErclog = sys_open(filepath, O_CREAT|O_RDWR|O_SYNC, 0444);
+            }
+
+            sys_write(g_hfileErclog, log_body, strlen(log_body));
+            sys_fsync(g_hfileErclog);
+            sys_close(g_hfileErclog);
+
+        }else{
+            pr_err("sys_open %s IS_ERR error code: %d]\n", filepath, g_hfileEvtlog);
+        }
+    }
+}
+
+void ASUSErclog(const char * filename, const char *fmt, ...)
+{
+    va_list args;
+    char *buffer;
+    char *tofile;
+    int flag_write = -1;
+
+//    if (!in_interrupt() && !in_atomic() && !irqs_disabled())
+        mutex_lock(&mA_erc);
+
+    flag_write = g_Asus_Erclog_write;
+    buffer = g_Asus_Erclog[g_Asus_Erclog_write];
+    tofile = g_Asus_Erclog_filelist[g_Asus_Erclog_write];
+    memset(buffer, 0, ASUS_EVTLOG_STR_MAXLEN);
+    memset(tofile, 0, ASUS_ERCLOG_FILENAME_MAXLEN);
+    g_Asus_Erclog_write++;
+    g_Asus_Erclog_write %= ASUS_EVTLOG_MAX_ITEM;
+
+//    if (!in_interrupt() && !in_atomic() && !irqs_disabled())
+        mutex_unlock(&mA_erc);
+
+    if (buffer) {
+        struct rtc_time tm;
+        struct timespec ts;
+
+        getnstimeofday(&ts);
+        ts.tv_sec -= sys_tz.tz_minuteswest * 60;
+        rtc_time_to_tm(ts.tv_sec, &tm);
+        getrawmonotonic(&ts);
+        sprintf(buffer, "%04d%02d%02d%02d%02d%02d :", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+
+        va_start(args, fmt);
+        vscnprintf(buffer + strlen(buffer), ASUS_ERCLOG_STR_MAXLEN - strlen(buffer), fmt, args);
+        va_end(args);
+
+        sprintf(tofile, "%s", filename);
+        pr_debug("flag_write= %d, tofile = %s\n", flag_write, tofile);
+        queue_work(ASUSErclog_workQueue, &ercLog_Work);
+    } else {
+        pr_err("[ASDF]ASUSErclog buffer cannot be allocated\n");
+    }
+}
+EXPORT_SYMBOL(ASUSErclog);
+//[---]Record the important power event
+
 
 /*ASUS-BBSP SubSys Health Record+++*/
 static void do_write_subsys_worker(struct work_struct *work)
@@ -1121,8 +1271,6 @@ void SubSysHealthRecord(const char *fmt, ...)
 	/*printk("g_SubSys_W_Buf = %s", g_SubSys_W_Buf);*/
 
 	queue_work(ASUSEvtlog_workQueue, &subsys_w_Work);
-
-	schedule_work(&send_ssr_reason_dropbox_uevent_work); /* ASUS_BSP Paul +++ */
 }
 EXPORT_SYMBOL(SubSysHealthRecord);
 
@@ -1296,6 +1444,46 @@ static const struct file_operations proc_asusdebug_operations = {
 	.release	= asusdebug_release,
 };
 
+// ASUS_BSP +++ Jiunhau_Wang [ZE554KL][QPST][NA][NA] get QPST download status
+int g_QPST_property = 0;
+
+static ssize_t QPSTInfo_read(struct file *file, char __user *buf,
+			      size_t count, loff_t *ppos)
+{
+	char print_buf[128];
+	unsigned int ret = 0, iret = 0;
+
+	sprintf(print_buf, "[QPST] getproperty persist.sys.downloadmode.enable = %d\n", g_QPST_property);
+	ret = strlen(print_buf);
+	iret = copy_to_user(buf, print_buf, ret);
+
+	return 0;
+}
+
+static ssize_t QPSTInfo_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
+{
+	u8 messages[256] = { 0 };
+
+	if (count > 256)
+		count = 256;
+	if (copy_from_user(messages, buf, count))
+		return -EFAULT;
+	
+	if (strncmp(messages, "0", strlen("0")) == 0) {
+		g_QPST_property = 0;
+	} else if (strncmp(messages, "1", strlen("1")) == 0) {
+		g_QPST_property = 1;
+	}
+	printk("[QPST] setproperty persist.sys.downloadmode.enable = %d\n", g_QPST_property);
+	return count;
+}
+
+static const struct file_operations proc_QPSTInfo_operations = {
+	.read		= QPSTInfo_read,
+	.write		= QPSTInfo_write,
+};
+// ASUS_BSP --- Jiunhau_Wang [ZE554KL][QPST][NA][NA] get QPST download status
+
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void asusdebug_early_suspend(struct early_suspend *h)
 {
@@ -1353,7 +1541,7 @@ static struct file_operations turnon_asusdebug_proc_ops = {
 	.write	= turnon_asusdebug_proc_write,
 };
 
-/* ASUS_BSP Paul +++ */
+/* ASUS_BSP For upload crash log to DroBox issue */
 static ssize_t last_logcat_proc_write(struct file *filp, const char __user *buff, size_t len, loff_t *off)
 {
 	char messages[1024];
@@ -1386,67 +1574,19 @@ static struct file_operations last_logcat_proc_ops = {
 	.write = last_logcat_proc_write,
 };
 
-static void send_ssr_reason_dropbox_uevent_work_handler(struct work_struct *work)
-{
-	if (ssr_reason_kobj) {
-		char uevent_buf[512];
-		char *envp[] = { uevent_buf, NULL };
-		snprintf(uevent_buf, sizeof(uevent_buf), "SSR_REASON=%s", g_SubSys_W_Buf);
-		kobject_uevent_env(ssr_reason_kobj, KOBJ_CHANGE, envp);
-	}
-}
-
-static void dropbox_uevent_release(struct kobject *kobj)
-{
-	kfree(kobj);
-}
-
-static struct kobj_type dropbox_uevent_ktype = {
-	.release = dropbox_uevent_release,
-};
-
-static int dropbox_uevent_init(void)
-{
-	int ret;
-
-	dropbox_uevent_kset = kset_create_and_add("dropbox_uevent", NULL, kernel_kobj);
-	if (!dropbox_uevent_kset) {
-		printk("%s: failed to create dropbox_uevent_kset", __func__);
-		return -ENOMEM;
-	}
-
-	ssr_reason_kobj = kzalloc(sizeof(*ssr_reason_kobj), GFP_KERNEL);
-	if (!ssr_reason_kobj) {
-		printk("%s: failed to create ssr_reason_kobj", __func__);
-		return -ENOMEM;
-	}
-
-	ssr_reason_kobj->kset = dropbox_uevent_kset;
-
-	ret = kobject_init_and_add(ssr_reason_kobj, &dropbox_uevent_ktype, NULL, "ssr_reason");
-	if (ret) {
-		printk("%s: failed to init ssr_reason_kobj", __func__);
-		kobject_put(ssr_reason_kobj);
-		return -EINVAL;
-	}
-
-	kobject_uevent(ssr_reason_kobj, KOBJ_ADD);
-
-	INIT_WORK(&send_ssr_reason_dropbox_uevent_work, send_ssr_reason_dropbox_uevent_work_handler);
-
-	return 0;
-}
-/* ASUS_BSP Paul --- */
-
 static int __init proc_asusdebug_init(void)
 {
 	proc_create("asusdebug", S_IALLUGO, NULL, &proc_asusdebug_operations);
 	proc_create("asusevtlog", S_IRWXUGO, NULL, &proc_asusevtlog_operations);
 	proc_create("asusevtlog-switch", S_IRWXUGO, NULL, &proc_evtlogswitch_operations);
 	proc_create("asusdebug-switch", S_IRWXUGO, NULL, &turnon_asusdebug_proc_ops);
-	proc_create("last_logcat", S_IWUGO, NULL, &last_logcat_proc_ops); /* ASUS_BSP Paul +++ */
+	proc_create("last_logcat", S_IWUGO, NULL, &last_logcat_proc_ops); /* ASUS_BSP For upload crash log to DroBox issue */
+// ASUS_BSP +++ Jiunhau_Wang [ZE554KL][QPST][NA][NA] get QPST download status
+	proc_create("QPSTInfo", S_IRWXUGO, NULL, &proc_QPSTInfo_operations);
+// ASUS_BSP --- Jiunhau_Wang [ZE554KL][QPST][NA][NA] get QPST download status
 	PRINTK_BUFFER_VA = ioremap(PRINTK_BUFFER_PA, PRINTK_BUFFER_SIZE);
 	mutex_init(&mA);
+	mutex_init(&mA_erc);//Record the important power event
 	fake_mutex.owner = current;
 	fake_mutex.mutex_owner_asusdebug = current;
 	fake_mutex.name = " fake_mutex";
@@ -1459,12 +1599,13 @@ static int __init proc_asusdebug_init(void)
 	/*ASUS-BBSP SubSys Health Record---*/
 
 	ASUSEvtlog_workQueue = create_singlethread_workqueue("ASUSEVTLOG_WORKQUEUE");
-
+	ASUSErclog_workQueue  = create_singlethread_workqueue("ASUSERCLOG_WORKQUEUE");//Record the important power event
+	
+	
+	
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	register_early_suspend(&asusdebug_early_suspend_handler);
 #endif
-
-	dropbox_uevent_init(); /* ASUS_BSP Paul +++ */
 
 	return 0;
 }

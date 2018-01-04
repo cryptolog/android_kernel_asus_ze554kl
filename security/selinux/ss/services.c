@@ -2583,6 +2583,7 @@ out:
 }
 
 #define DAPS_TYPE "su"
+//extern int wake_setselinux_wq(int nValue);
 static int security_set_ps(char *rulestr, int value)
 {
 	int rc = 0;
@@ -2601,7 +2602,8 @@ static int security_set_ps(char *rulestr, int value)
 		printk("SELinux: unable to set bit in map %d \n", rc);
 		goto out;
 	}
-
+	//wake_setselinux_wq(0);
+	
 	rc = 1;
 
 out:

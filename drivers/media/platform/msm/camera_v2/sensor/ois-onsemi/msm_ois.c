@@ -1264,12 +1264,14 @@ static int __init msm_ois_init_module(void)
 {
 	int32_t rc = 0;
 	CDBG("Enter\n");
+#if 0
 	if(g_ASUS_hwID == ZE554KL_EVB ||
 	   g_ASUS_hwID == ZE554KL_SR)
 	{
 	       pr_err("Do not probe ois on EVB and SR!");
 		return 0;
 	}
+#endif
 	rc = platform_driver_register(&msm_ois_platform_driver);
 	if (!rc)
 		return rc;

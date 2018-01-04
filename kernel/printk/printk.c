@@ -267,6 +267,7 @@ static void *memcpy_nc(void *dest, const void *src, size_t n)
 static int write_to_asus_log_buffer(const char *text, size_t text_len,
 				enum log_flags lflags) {
 	static ulong log_write_index = 0; /* the index to write the log in asus log buffer */
+	ulong *printk_buffer_slot2_addr = (ulong *)PRINTK_BUFFER_SLOT2; /* ASUS_BSP For upload crash log to DroBox issue */
 
 	if (!asus_log_buf) {
 		return -1;
@@ -291,6 +292,8 @@ static int write_to_asus_log_buffer(const char *text, size_t text_len,
 		asus_log_buf[log_write_index++] = '\n';
 		log_write_index = log_write_index % PRINTK_BUFFER_SLOT_SIZE;
 	}
+
+	*(printk_buffer_slot2_addr + 1) = log_write_index; /* ASUS_BSP For upload crash log to DroBox issue ( Remeber log buffer index ) */
 
 	return text_len;
 }
@@ -1537,7 +1540,7 @@ static void call_console_drivers(int level,
 {
 	struct console *con;
 
-	trace_console(text, len);
+	trace_console_rcuidle(text, len);
 
 	if (level >= console_loglevel && !ignore_loglevel)
 		return;
@@ -2230,11 +2233,11 @@ void suspend_console(void)
 
 void resume_console(void)
 {
-	int i;
+	int i; //ASUS_BSP +
 	nSuspendInProgress = 0;
 	ASUSEvtlog("[UTS] System Resume\n");
 
-//[+++][PM]Show GIC_IRQ wakeup information in AsusEvtlog
+//ASUS_BSP +++ [PM]Show GIC_IRQ wakeup information in AsusEvtlog
 	if (pm_pwrcs_ret) {
 		if (gic_irq_cnt > 0) {
 			for (i = 0; i < gic_irq_cnt; i++) {
@@ -2246,7 +2249,7 @@ void resume_console(void)
 		}
 		pm_pwrcs_ret = 0;
 	}
-//[---][PM]Show GIC_IRQ wakeup information in AsusEvtlog
+//ASUS_BSP --- [PM]Show GIC_IRQ wakeup information in AsusEvtlog
 
 	if (!console_suspend_enabled)
 		return;

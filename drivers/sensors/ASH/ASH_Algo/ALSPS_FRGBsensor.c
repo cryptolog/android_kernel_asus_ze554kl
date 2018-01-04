@@ -634,8 +634,13 @@ static int 	light_get_accuracy_gain(void)
 	if(cal > 0 )
 		g_als_data->g_als_calvalue = cal;
 	
+#ifdef ASUS_ZE554KL_PROJECT
 	gainvalue = (600*LIGHT_GAIN_ACCURACY_CALVALUE)/
+                                (g_als_data->g_als_calvalue);
+#else
+	gainvalue = (1000*LIGHT_GAIN_ACCURACY_CALVALUE)/
 				(g_als_data->g_als_calvalue);
+#endif
 	g_als_data->g_als_accuracy_gain = gainvalue;
 	
 	return gainvalue;
@@ -1917,7 +1922,6 @@ static void proximity_work(int state)
 			g_ps_data->event_counter++;	/* --- For stress test debug --- */
 			audio_mode = get_audiomode();
 			if (2 == audio_mode || 3 == audio_mode) {
-
 				ftxxxx_disable_touch(true);
 			}
 		} else {
@@ -2023,7 +2027,7 @@ mutex_lock(&g_alsps_frgb_lock);
 	/* Read INT_FLAG will clean the interrupt */
 	ALSPS_FRGB_SENSOR_INT = ALSPS_FRGB_hw_client->ALSPS_FRGB_hw_get_interrupt();
 	if(ALSPS_FRGB_SENSOR_INT <0){
-		err("ALSPS_FRGB_hw_get_interrupt ERROR\n");
+//		err("ALSPS_FRGB_hw_get_interrupt ERROR\n");
 		goto ist_err;
 	}
 

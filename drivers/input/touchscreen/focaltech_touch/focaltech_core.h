@@ -100,6 +100,8 @@ extern int strncmp(const char *,const char *,__kernel_size_t);
 #define FTS_TOUCH_ID_POS                    5
 #define FTS_COORDS_ARR_SIZE                 4
 
+#define PREO_MINIPORTING                    0
+
 #define FTS_TOUCH_DOWN      0
 #define FTS_TOUCH_UP        1
 #define FTS_TOUCH_CONTACT   2

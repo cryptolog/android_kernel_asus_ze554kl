@@ -151,14 +151,14 @@
 / {
 	qrd_batterydata: qcom,battery-data {
 		qcom,batt-id-range-pct = <15>;
-		#include "fg-gen3-batterydata-coslight-3150mah.dtsi"
+
 		#include "fg-gen3-batterydata-qrd-skuk-4v4-3000mah.dtsi"
 	};
 };
 
 &pm660_fg {
 	qcom,battery-data = <&qrd_batterydata>;
-	qcom,fg-jeita-thresholds = <0 5 55 55>;
+	qcom,fg-jeita-thresholds = <0 10 50 60>;
 	qcom,battery-thermal-coefficients = [9d 50 ff];
 };
 
@@ -213,6 +213,13 @@
 	qcom,bus-speed-mode = "HS400_1p8v", "HS200_1p8v", "DDR_1p8v";
 
 	status = "ok";
+};
+
+&sdc2_cd_on {
+	config {
+		/delete-property/ bias-pull-up;
+		bias-disable;
+	};
 };
 
 &sdhc_2 {
@@ -387,10 +394,6 @@
 		qcom,fb-resume-delay-us = <10000>;
 		qcom,afe-power-on-delay-us = <1000>;
 		qcom,afe-power-off-delay-us = <6>;
-	};
-
-	qcom,msm-ssc-sensors {
-		compatible = "qcom,msm-ssc-sensors";
 	};
 };
 

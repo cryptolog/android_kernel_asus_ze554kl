@@ -27,8 +27,6 @@
 #include "diag_mux.h"
 #include "diag_usb.h"
 #include "diag_memorydevice.h"
-#include "diagfwd_peripheral.h"
-#include "diag_masks.h"
 #include "diag_ipc_logging.h"
 
 struct diag_mux_state_t *diag_mux;
@@ -143,10 +141,6 @@ int diag_mux_write(int proc, unsigned char *buf, int len, int ctx)
 		return -EIO;
 
 	upd = GET_PD_CTXT(ctx);
-	//+++[660AN][diag][debug]Diag debug patch for stop issue
-	DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
-		"diag_fr: %s:%d: upd= %d", __func__, __LINE__, upd);
-	//---[660AN][diag][debug]Diag debug patch for stop issue
 	if (upd) {
 		switch (upd) {
 		case DIAG_ID_MPSS:
@@ -159,9 +153,15 @@ int diag_mux_write(int proc, unsigned char *buf, int len, int ctx)
 			upd = PERIPHERAL_CDSP;
 			break;
 		case UPD_WLAN:
+			if (!driver->pd_logging_mode[0])
+				upd = PERIPHERAL_MODEM;
+			break;
 		case UPD_AUDIO:
+			if (!driver->pd_logging_mode[1])
+				upd = PERIPHERAL_LPASS;
+			break;
 		case UPD_SENSORS:
-			if (!driver->num_pd_session)
+			if (!driver->pd_logging_mode[2])
 				upd = PERIPHERAL_LPASS;
 			break;
 		default:
@@ -170,18 +170,10 @@ int diag_mux_write(int proc, unsigned char *buf, int len, int ctx)
 		}
 		if (((MD_PERIPHERAL_MASK(upd)) &
 			(diag_mux->mux_mask)) &&
-			//+++[660AN][diag][debug]Diag debug patch for stop issue
-			driver->md_session_map[upd]) {
+			driver->md_session_map[upd])
 			logger = diag_mux->md_ptr;
-
-			DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
-				"diag_fr: %s:%d:upd md_ptr", __func__, __LINE__);
-			}
-		else {
- 			logger = diag_mux->usb_ptr;
-			DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
-				"diag_fr: %s:%d:upd usb_ptr", __func__, __LINE__);	
-			}//---[660AN][diag][debug]Diag debug patch for stop issue
+		else
+			logger = diag_mux->usb_ptr;
 	} else {
 
 		peripheral = GET_BUF_PERIPHERAL(ctx);
@@ -189,16 +181,10 @@ int diag_mux_write(int proc, unsigned char *buf, int len, int ctx)
 			return -EINVAL;
 
 		if (MD_PERIPHERAL_MASK(peripheral) &
-			diag_mux->mux_mask) {
-			//+++[660AN][diag][debug]Diag debug patch for stop issue
- 			logger = diag_mux->md_ptr;
- 			DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
-				"diag_fr: %s:%d: md_ptr", __func__, __LINE__);
-		} else {
- 			logger = diag_mux->usb_ptr;
-					DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
-				"diag_fr: %s:%d:usb_ptr ", __func__, __LINE__);
-			}//---[660AN][diag][debug]Diag debug patch for stop issue
+			diag_mux->mux_mask)
+			logger = diag_mux->md_ptr;
+		else
+			logger = diag_mux->usb_ptr;
 	}
 
 	if (logger && logger->log_ops && logger->log_ops->write)

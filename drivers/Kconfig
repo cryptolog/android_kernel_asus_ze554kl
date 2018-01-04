@@ -213,7 +213,7 @@ source "drivers/bif/Kconfig"
 source "drivers/sensors/Kconfig"
 
 config TEXURA_USERDEBUG
-	bool "Texura userdebug module for ASUS ZE500KL"
+	bool "Texura userdebug module for ASUS"
 	depends on NLS_UTF8
 	default n
 	help

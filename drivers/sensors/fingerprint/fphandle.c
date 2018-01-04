@@ -90,6 +90,8 @@ static int g_module_vendor;
 
 extern bool g_Charger_mode;
 bool g_FP_Disable_Touch = false;
+extern u32 g_update_bl;
+
 
 struct fp_device_data {
 	/* +++ common part +++ */
@@ -98,8 +100,7 @@ struct fp_device_data {
 	unsigned int drdy_pin; // int_gpio
 	unsigned int isr_pin;	// isr
 	unsigned int sleep_pin; // rst_gpio
-	unsigned int osvcc_Leo_enable_pin;
-	unsigned int osvcc_Libra_enable_pin;
+	unsigned int osvcc_Titan_enable_pin;
 	unsigned int module_vendor;
         int FP_ID1;
         int FP_ID2;
@@ -1280,10 +1281,7 @@ static long gf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         pr_info("[JK] GF_IOC_TOUCH_DISABLE_MASK !\n");
         break;
     case GF_IOC_CLEAN_EARLY_WAKE_HINT:
-        if(gf_dev->fb_black == 0)
-            pr_info("Screen on, Skip reset wake up hint !\n");
-        else
-	        gf_dev->FP_ID2 = 1;
+	    gf_dev->FP_ID2 = 1;
         break;
 	default:
 		gf_dbg("Unsupport cmd:0x%x\n", cmd);
@@ -1311,14 +1309,15 @@ static irqreturn_t gf_irq(int irq, void *handle)
 	kobject_uevent(&gf_dev->spi->dev.kobj, KOBJ_CHANGE);
 
 #if GF_EARLY_WAKE
-	if (gf_dev->fb_black & gf_dev->FP_ID2) {
+	if ((!g_update_bl) & gf_dev->FP_ID2) {
 		input_report_key(gf_dev->input, KEY_F22, 1);
 		input_sync(gf_dev->input);
-		mdelay(3);
 		input_report_key(gf_dev->input, KEY_F22, 0);
 		input_sync(gf_dev->input);
 		gf_dev->FP_ID2 = 0;
-	}
+	} else {
+	    gf_dev->FP_ID2 = 0;
+    }
 
 #endif
 
@@ -1451,7 +1450,7 @@ static int goodix_fb_state_chg_callback(struct notifier_block *nb,
 		case FB_BLANK_POWERDOWN:
 			if (gf_dev->device_available == 1) {
 				gf_dev->fb_black = 1;
-				gf_dev->FP_ID2 = 1;
+//				gf_dev->FP_ID2 = 1;
 				g_FP_Disable_Touch = false;
                                 if (gf_dev->module_vendor == vendor_module_gdix_3266A) {
                                         temp = GF_NET_EVENT_FB_BLACK;
@@ -1470,7 +1469,7 @@ static int goodix_fb_state_chg_callback(struct notifier_block *nb,
 		case FB_BLANK_UNBLANK:
 			if (gf_dev->device_available == 1) {
 				gf_dev->fb_black = 0;
-				gf_dev->FP_ID2 = 0;
+//				gf_dev->FP_ID2 = 0;
                                 if (gf_dev->module_vendor == vendor_module_gdix_3266A) {
                                         temp = GF_NET_EVENT_FB_UNBLACK;
                                         sendnlmsg(&temp);
@@ -2019,19 +2018,11 @@ static int fp_gpio_init(struct fp_device_data *pdata)
 		goto fp_gpio_init_sleep_pin_failed;
 	}
 
-	if (gpio_request(pdata->osvcc_Leo_enable_pin, "fp_Leo_pwr_en")) {
+	if (gpio_request(pdata->osvcc_Titan_enable_pin, "fp_Titan_pwr_en")) {
 		err = -EBUSY;
-		printk("[FP][%s] gpio request fp_Leo_pwr_en failed ! \n", __func__);
-		goto fp_gpio_init_leo_vcc_pin_failed;
+		printk("[FP][%s] gpio request fp_Titan_pwr_e failed ! \n", __func__);
+		goto fp_gpio_init_titan_vcc_pin_failed;
 	}
-#if 0
-	if (gpio_request(pdata->osvcc_Libra_enable_pin, "fp_Libra_pwr_en")) {
-		err = -EBUSY;
-		printk("[FP][%s] gpio request fp_Libra_pwr_en failed ! \n", __func__);
-		goto fp_gpio_init_libra_vcc_pin_failed;
-	}
-#endif
-	/* ---no use in msm8953--- */
 
 	/* config part */
 	err = gpio_direction_output(pdata->sleep_pin, 1);
@@ -2041,30 +2032,18 @@ static int fp_gpio_init(struct fp_device_data *pdata)
 		goto fp_gpio_config_failed;
 	}
 
-	err = gpio_direction_output(pdata->osvcc_Leo_enable_pin, 1);
+	err = gpio_direction_output(pdata->osvcc_Titan_enable_pin, 1);
 	if (err < 0) {
 		printk("[FP][%s] gpio_direction_output osvcc_enable_pin failed ! \n", __func__);
 		err = -EBUSY;
 		goto fp_gpio_config_failed;
 	}
-#if 0
-	err = gpio_direction_output(pdata->osvcc_Libra_enable_pin, 1);
-	if (err < 0) {
-		printk("[FP][%s] gpio_direction_output osvcc_enable_pin failed ! \n", __func__);
-		err = -EBUSY;
-		goto fp_gpio_config_failed;
-	}
-#endif
 	/* ---no use in msm8953--- */
 
 	return err;
 fp_gpio_config_failed:
-#if 0
-	gpio_free(pdata->osvcc_Libra_enable_pin);
-fp_gpio_init_libra_vcc_pin_failed:
-#endif
-	gpio_free(pdata->osvcc_Leo_enable_pin);
-fp_gpio_init_leo_vcc_pin_failed:
+	gpio_free(pdata->osvcc_Titan_enable_pin);
+fp_gpio_init_titan_vcc_pin_failed:
 	gpio_free(pdata->sleep_pin);
 fp_gpio_init_sleep_pin_failed:
 	gpio_free(pdata->drdy_pin);
@@ -2222,13 +2201,7 @@ static int fp_check_gpio_init(struct fp_device_data *pdata)
 		printk("[FP][%s] gpio request fp_id1 failed ! \n", __func__);
 		return err;		
 	}
-#if 0
-	if (gpio_request(pdata->FP_ID2, "fp_id2")) {
-		err = -EBUSY;
-		printk("[FP][%s] gpio request fp_id2 failed ! \n", __func__);
-		goto fp_gpio_init_id1_pin_failed;
-	}
-#endif
+
 	/* config part */
 	err = gpio_direction_output(pdata->FP_ID1, 1);
 	if (err < 0) {
@@ -2236,22 +2209,9 @@ static int fp_check_gpio_init(struct fp_device_data *pdata)
 		err = -EBUSY;
 		goto fp_gpio_init_id1_pin_failed;
 	}
-    
-#if 0
-	err = gpio_direction_output(pdata->FP_ID2, 1);
-	if (err < 0) {
-		printk("[FP][%s] gpio_direction_output fp_id2 failed ! \n", __func__);
-		err = -EBUSY;
-		goto fp_gpio_config_id2_pin_failed;
-	}
-#endif
 
 	return err;
 
-#if 0
-fp_gpio_config_id2_pin_failed:
-	gpio_free(pdata->FP_ID2);
-#endif
 fp_gpio_init_id1_pin_failed:
 	gpio_free(pdata->FP_ID1);
 
@@ -2278,10 +2238,12 @@ static int fp_pars_dt(struct device *dev,
 
 	/* +++ 3.3 enable gpio info need config in ER stage +++ */
 
-	pdata->osvcc_Leo_enable_pin = of_get_named_gpio_flags(np, "asus-fp,vcc-enable-gpio", 0, NULL);
-	if (pdata->osvcc_Leo_enable_pin < 0)
-		pdata->osvcc_Leo_enable_pin = 0;
-
+	pdata->osvcc_Titan_enable_pin = of_get_named_gpio(np, "asus-fp,vcc-enable-gpio", 0);
+	printk("[FP] AAAAPpwe_pin = %d \n",pdata->osvcc_Titan_enable_pin);
+	if (pdata->osvcc_Titan_enable_pin < 0){
+		printk("[FP] QQQQQQQQQPpwe_pin = %d < 0",pdata->osvcc_Titan_enable_pin);
+		pdata->osvcc_Titan_enable_pin = 0;
+	}
     
 	/* +++ Fingerprint ID pin  +++ */
 	pdata->FP_ID1 = of_get_named_gpio_flags(np, "asus-fp,ID1-gpio", 0, NULL);
@@ -2289,22 +2251,8 @@ static int fp_pars_dt(struct device *dev,
             printk("[JK] pard FP ID 1 fail ! \n");
             return pdata->FP_ID1;
         }
-	
-#if 0
-	pdata->osvcc_Libra_enable_pin = of_get_named_gpio_flags(np, "asus-fp,vcc-enable-Libra-gpio", 0, NULL);
-	if (pdata->osvcc_Libra_enable_pin < 0)
-		pdata->osvcc_Libra_enable_pin = 0;
-	/* --- 3.3 enable gpio info need config in ER stage --- */
 
-	pdata->FP_ID2 = of_get_named_gpio_flags(np, "asus-fp,ID2-gpio", 0, NULL);
-	if (pdata->FP_ID2 < 0)
-		return pdata->FP_ID2;
-	/* --- Fingerprint ID pin  --- */
-
-	printk("[FP] sleep_pin = %d, drdy_pin = %d, ID1 = %d ,ID2 = %d, Leo-enable_pin = %d Libra-enable_pin = %d ! \n", pdata->sleep_pin, pdata->drdy_pin, pdata->FP_ID1, pdata->FP_ID2, pdata->osvcc_Leo_enable_pin, pdata->osvcc_Libra_enable_pin);
-#endif
-
-	printk("[FP] sleep_pin = %d, drdy_pin = %d, Ppwe_pin = %d , ID1 = %d! \n", pdata->sleep_pin, pdata->drdy_pin, pdata->osvcc_Leo_enable_pin, pdata->FP_ID1);
+	printk("[FP] sleep_pin = %d, drdy_pin = %d, Ppwe_pin = %d , ID1 = %d! \n", pdata->sleep_pin, pdata->drdy_pin, pdata->osvcc_Titan_enable_pin, pdata->FP_ID1);
 
 	return 0;
 }
@@ -2332,15 +2280,16 @@ static int fp_sensor_probe(struct platform_device *pdev)
 	fp_device->irq_wakeup_flag = false;
 	fp_device->FpTimer_expires = 0;
 	fp_device->enable_touch_mask = 0;
+    fp_device->FP_ID2 = 0;
 	/* Inin status */
 
 	/*status = fp_pars_dt(&pdev->dev, fp_device);*/
 
-        if (fp_pars_dt(&pdev->dev, fp_device) < 0) {
-            printk("[FP] opps pars gpio fail ! \n");
-            status = -2;
-            goto fp_pars_dt_failed;
-        }
+	if (fp_pars_dt(&pdev->dev, fp_device) < 0) {
+		printk("[FP] opps pars gpio fail ! \n");
+		status = -2;
+		goto fp_pars_dt_failed;
+	}
             
 	if (fp_check_gpio_init(fp_device) < 0) {
 		printk("[FP] opps init id gpio ! \n");
@@ -2349,22 +2298,6 @@ static int fp_sensor_probe(struct platform_device *pdev)
 	}
 
 	fp_device->module_vendor = fp_check_vendor(fp_device);
-
-#if 0
-	if (fp_power_init(&pdev->dev, fp_device, true) < 0){
-		printk("[FP] opps fp_power_init ! \n");
-		status = -3;
-		goto fp_pars_dt_failed;
-	}
-
-	if (fp_power_on(fp_device, true) < 0) {
-		printk("[FP] opps fp_power_on ! \n");
-		status = -4;
-		goto fp_pars_dt_failed;
-	}
-#endif
-	
-
 
 	if (fp_gpio_init(fp_device)) {
 		printk("[FP] opps fp_gpio_init fail ! \n");
@@ -2501,7 +2434,7 @@ static int fp_sensor_probe(struct platform_device *pdev)
 #endif
 			fp_device->irq_gpio = fp_device->drdy_pin;
 			fp_device->reset_gpio = fp_device->sleep_pin;
-			fp_device->pwr_gpio = fp_device->osvcc_Leo_enable_pin;
+			fp_device->pwr_gpio = fp_device->osvcc_Titan_enable_pin;
 			fp_device->device_available = 0;
 			fp_device->fb_black = 0;
 

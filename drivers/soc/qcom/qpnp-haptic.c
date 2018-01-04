@@ -89,7 +89,7 @@
 #define QPNP_HAP_VMAX_MASK		GENMASK(5, 1)
 #define QPNP_HAP_VMAX_SHIFT		1
 #define QPNP_HAP_VMAX_MIN_MV		116
-#define QPNP_HAP_VMAX_MAX_MV		3596
+#define QPNP_HAP_VMAX_MAX_MV		2552
 #define QPNP_HAP_ILIM_MASK		BIT(0)
 #define QPNP_HAP_ILIM_MIN_MV		400
 #define QPNP_HAP_ILIM_MAX_MV		800
@@ -149,7 +149,7 @@
 #define SC_FOUND_BIT			0x08
 #define SC_MAX_COUNT			5
 
-#define QPNP_HAP_TIMEOUT_MS_MAX		120000
+#define QPNP_HAP_TIMEOUT_MS_MAX		12000
 #define QPNP_HAP_STR_SIZE		20
 #define QPNP_HAP_MAX_RETRIES		5
 #define QPNP_TEST_TIMER_MS		5
@@ -810,13 +810,11 @@ static int qpnp_hap_lra_auto_res_config(struct qpnp_hap *hap,
 	if (ares_cfg->lra_res_cal_period < QPNP_HAP_RES_CAL_PERIOD_MIN)
 		ares_cfg->lra_res_cal_period = QPNP_HAP_RES_CAL_PERIOD_MIN;
 
-
 	if (hap->pmic_subtype == PM660_SUBTYPE) {
 		if (ares_cfg->lra_res_cal_period >
 				QPNP_HAP_PM660_RES_CAL_PERIOD_MAX)
 			ares_cfg->lra_res_cal_period =
 				QPNP_HAP_PM660_RES_CAL_PERIOD_MAX;
-
 
 		if (ares_cfg->auto_res_mode == QPNP_HAP_PM660_AUTO_RES_QWD)
 			ares_cfg->lra_res_cal_period = 0;
@@ -824,7 +822,6 @@ static int qpnp_hap_lra_auto_res_config(struct qpnp_hap *hap,
 		if (ares_cfg->lra_res_cal_period)
 			val = ilog2(ares_cfg->lra_res_cal_period /
 					QPNP_HAP_RES_CAL_PERIOD_MIN) + 1;
-
 	} else {
 		if (ares_cfg->lra_res_cal_period > QPNP_HAP_RES_CAL_PERIOD_MAX)
 			ares_cfg->lra_res_cal_period =
@@ -834,7 +831,6 @@ static int qpnp_hap_lra_auto_res_config(struct qpnp_hap *hap,
 			val = ilog2(ares_cfg->lra_res_cal_period /
 					QPNP_HAP_RES_CAL_PERIOD_MIN);
 	}
-
 
 	if (hap->pmic_subtype == PM660_SUBTYPE) {
 		val |= ares_cfg->auto_res_mode <<
@@ -862,11 +858,9 @@ static int qpnp_hap_lra_auto_res_config(struct qpnp_hap *hap,
 			QPNP_HAP_LRA_RES_CAL_PER_MASK;
 	}
 
-
 	pr_debug("mode: %d hi_z period: %d cal_period: %d\n",
 		ares_cfg->auto_res_mode, ares_cfg->lra_high_z,
 		ares_cfg->lra_res_cal_period);
-
 
 	rc = qpnp_hap_masked_write_reg(hap,
 			QPNP_HAP_LRA_AUTO_RES_REG(hap->base), mask, val);
@@ -913,7 +907,6 @@ static int qpnp_hap_vmax_config(struct qpnp_hap *hap, int vmax_mv,
 			QPNP_HAP_VMAX_MASK | QPNP_HAP_VMAX_OVD_BIT, val);
 	return rc;
 }
-
 
 /* configuration api for ilim */
 static int qpnp_hap_ilim_config(struct qpnp_hap *hap)
@@ -1565,6 +1558,130 @@ static ssize_t qpnp_hap_ramp_test_data_show(struct device *dev,
 
 }
 
+//ASUS_BSP +++ J66: Modify ZF4 SMMI test interface for ATD format
+static ssize_t vmax_level_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct timed_output_dev *timed_dev = dev_get_drvdata(dev);
+	struct qpnp_hap *hap = container_of(timed_dev, struct qpnp_hap,
+	                                 timed_dev);
+	int value;
+
+	if (sscanf(buf, "%d", &value) != 1)
+	        return -EINVAL;
+
+
+	if(value < 0) {
+		printk("[Vibrator] config vmax_level error level: %d\n", value);
+		return -EINVAL;
+	}
+
+	if( (ZE554KL_EVB < g_ASUS_hwID)  && (g_ASUS_hwID < ZE554KL_UNKNOWN)) {
+		if(value > sizeof(ze554kl_vmax_array)/sizeof(int)) {
+			printk("[Vibrator] config vmax_level error value: %d\n", value);
+			return -EINVAL;
+		}
+		hap->vmax_mv = ze554kl_vmax_array[value];
+	}
+	else {
+		printk("[Vibrator] not support this HW to config vmax_level\n");
+		return -EINVAL;
+	}
+
+	printk("[Vibrator] vmax: %d, level: %d\n",hap->vmax_mv, value);
+
+	if(qpnp_hap_vmax_config(hap, hap->vmax_mv, false)) {
+		printk("[Vibrator] config vmax_level failed\n");
+	}
+
+	return count;
+}
+
+static ssize_t vmax_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct timed_output_dev *timed_dev = dev_get_drvdata(dev);
+	struct qpnp_hap *hap = container_of(timed_dev, struct qpnp_hap,
+					timed_dev);
+	u8 val;
+	int mv, rc;
+
+	rc = qpnp_hap_read_reg(hap, QPNP_HAP_VMAX_REG(hap->base), &val);
+	if (rc < 0)
+		return rc;
+
+	mv = (val >> QPNP_HAP_VMAX_SHIFT) * QPNP_HAP_VMAX_MIN_MV; //approximate value
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", mv);
+}
+
+static ssize_t vmax_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct timed_output_dev *timed_dev = dev_get_drvdata(dev);
+	struct qpnp_hap *hap = container_of(timed_dev, struct qpnp_hap,
+					timed_dev);
+	int rc, data;
+
+	if (sscanf(buf, "%d", &data) != 1)
+		return -EINVAL;
+
+	hap->vmax_mv = data;
+
+	rc = qpnp_hap_vmax_config(hap, hap->vmax_mv, false);
+	if (rc){
+		printk("[Vibrator] vmax_store failed...\n");
+	}
+
+	return count;
+}
+
+static ssize_t shape_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct timed_output_dev *timed_dev = dev_get_drvdata(dev);
+	struct qpnp_hap *hap = container_of(timed_dev, struct qpnp_hap,
+					timed_dev);
+	u8 reg;
+	int rc;
+
+	rc = qpnp_hap_read_reg(hap, QPNP_HAP_CFG2_REG(hap->base),&reg);
+	if (rc < 0)
+		return rc;
+
+	return snprintf(buf, PAGE_SIZE, "%s\n", reg ? "square:1":"sine:0");
+}
+
+static ssize_t shape_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct timed_output_dev *timed_dev = dev_get_drvdata(dev);
+	struct qpnp_hap *hap = container_of(timed_dev, struct qpnp_hap,
+					timed_dev);
+	int rc, data;
+	u8 reg;
+
+	if (sscanf(buf, "%d", &data) != 1)
+		return -EINVAL;
+
+	if (data)
+		hap->wave_shape = QPNP_HAP_WAV_SQUARE;
+	else
+		hap->wave_shape = QPNP_HAP_WAV_SINE;
+
+	rc = qpnp_hap_read_reg(hap, QPNP_HAP_CFG2_REG(hap->base), &reg);
+	if (rc < 0)
+		return rc;
+	reg &= QPNP_HAP_WAV_SHAPE_MASK;
+	reg |= hap->wave_shape;
+	rc = qpnp_hap_write_reg(hap, QPNP_HAP_CFG2_REG(hap->base), reg);
+	if (rc)
+		return rc;
+
+	return count;
+}
+//ASUS_BSP --- J66: Modify ZF4 SMMI test interface for ATD format
+
 static ssize_t qpnp_hap_auto_res_mode_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -1720,7 +1837,6 @@ static ssize_t qpnp_hap_calib_period_show(struct device *dev,
 }
 
 static ssize_t qpnp_hap_calib_period_store(struct device *dev,
-
 		struct device_attribute *attr, const char *buf, size_t count)
 {
 	struct timed_output_dev *timed_dev = dev_get_drvdata(dev);
@@ -1804,129 +1920,6 @@ static ssize_t qpnp_hap_vmax_store(struct device *dev,
 	hap->vmax_mv = data;
 	return count;
 }
-
-static ssize_t vmax_level_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
-{
-	struct timed_output_dev *timed_dev = dev_get_drvdata(dev);
-	struct qpnp_hap *hap = container_of(timed_dev, struct qpnp_hap,
-	                                 timed_dev);
-	int value;
-
-	if (sscanf(buf, "%d", &value) != 1)
-	        return -EINVAL;
-
-
-	if(value < 0) {
-		printk("[Vibrator] config vmax_level error level: %d\n", value);
-		return -EINVAL;
-	}
-
-	if( (ZE554KL_EVB < g_ASUS_hwID)  && (g_ASUS_hwID < ZE554KL_UNKNOWN)) {
-		if(value > sizeof(ze554kl_vmax_array)/sizeof(int)) {
-			printk("[Vibrator] config vmax_level error value: %d\n", value);
-			return -EINVAL;
-		}
-		hap->vmax_mv = ze554kl_vmax_array[value];
-	}
-	else {
-		printk("[Vibrator] not support this HW to config vmax_level\n");
-		return -EINVAL;
-	}
-
-	printk("[Vibrator] vmax: %d, level: %d\n",hap->vmax_mv, value);
-
-	if(qpnp_hap_vmax_config(hap, hap->vmax_mv, false)) {
-		printk("[Vibrator] config vmax_level failed\n");
-	}
-
-	return count;
-}
-
-static ssize_t vmax_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct timed_output_dev *timed_dev = dev_get_drvdata(dev);
-	struct qpnp_hap *hap = container_of(timed_dev, struct qpnp_hap,
-					timed_dev);
-	u8 val;
-	int mv, rc;
-
-	rc = qpnp_hap_read_reg(hap, QPNP_HAP_VMAX_REG(hap->base), &val);
-	if (rc < 0)
-		return rc;
-
-	mv = (val >> QPNP_HAP_VMAX_SHIFT) * QPNP_HAP_VMAX_MIN_MV; //approximate value
-
-	return snprintf(buf, PAGE_SIZE, "%d\n", mv);
-}
-
-static ssize_t vmax_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
-{
-	struct timed_output_dev *timed_dev = dev_get_drvdata(dev);
-	struct qpnp_hap *hap = container_of(timed_dev, struct qpnp_hap,
-					timed_dev);
-	int rc, data;
-
-	if (sscanf(buf, "%d", &data) != 1)
-		return -EINVAL;
-
-	hap->vmax_mv = data;
-
-	rc = qpnp_hap_vmax_config(hap, hap->vmax_mv, false);
-	if (rc){
-		printk("[Vibrator] vmax_store failed...\n");
-	}
-
-	return count;
-}
-
-static ssize_t shape_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct timed_output_dev *timed_dev = dev_get_drvdata(dev);
-	struct qpnp_hap *hap = container_of(timed_dev, struct qpnp_hap,
-					timed_dev);
-	u8 reg;
-	int rc;
-
-	rc = qpnp_hap_read_reg(hap, QPNP_HAP_CFG2_REG(hap->base),&reg);
-	if (rc < 0)
-		return rc;
-
-	return snprintf(buf, PAGE_SIZE, "%s\n", reg ? "square:1":"sine:0");
-}
-
-static ssize_t shape_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
-{
-	struct timed_output_dev *timed_dev = dev_get_drvdata(dev);
-	struct qpnp_hap *hap = container_of(timed_dev, struct qpnp_hap,
-					timed_dev);
-	int rc, data;
-	u8 reg;
-
-	if (sscanf(buf, "%d", &data) != 1)
-		return -EINVAL;
-
-	if (data)
-		hap->wave_shape = QPNP_HAP_WAV_SQUARE;
-	else
-		hap->wave_shape = QPNP_HAP_WAV_SINE;
-
-	rc = qpnp_hap_read_reg(hap, QPNP_HAP_CFG2_REG(hap->base), &reg);
-	if (rc < 0)
-		return rc;
-	reg &= QPNP_HAP_WAV_SHAPE_MASK;
-	reg |= hap->wave_shape;
-	rc = qpnp_hap_write_reg(hap, QPNP_HAP_CFG2_REG(hap->base), reg);
-	if (rc)
-		return rc;
-
-	return count;
-}
-
 
 /* sysfs attributes */
 static struct device_attribute qpnp_hap_attrs[] = {
@@ -2013,7 +2006,7 @@ static int calculate_lra_code(struct qpnp_hap *hap)
 		lra_drive_period_code, lra_drive_frequency_hz);
 
 	for (i = 0; i < ADJUSTED_LRA_PLAY_RATE_CODE_ARRSIZE; ++i)
-		printk("[haptic] 0x%x\n", adjusted_lra_play_rate_code[i]);
+		printk("[haptic] 0x%x", adjusted_lra_play_rate_code[i]);
 
 	printk("[hap] calculate_lra_code()--\n");
 	return 0;
@@ -2383,10 +2376,20 @@ static void qpnp_hap_td_enable(struct timed_output_dev *dev, int time_ms)
 	if (time_ms < 0)	// ASUS_BSP Freddy: I think remove '=' is more logically.
 		return;
 
+	mutex_lock(&hap->lock);
+
+	if (time_ms == 0) {
+		/* disable haptics */
+		hrtimer_cancel(&hap->hap_timer);
+		hap->state = 0;
+		schedule_work(&hap->work);
+		mutex_unlock(&hap->lock);
+		return;
+	}
+
 	if ((time_ms < 10) && (time_ms > 0))
 		time_ms = 10;
 
-	mutex_lock(&hap->lock);
 	if (is_sw_lra_auto_resonance_control(hap))
 		hrtimer_cancel(&hap->auto_res_err_poll_timer);
 
@@ -2635,8 +2638,7 @@ static int qpnp_hap_config(struct qpnp_hap *hap)
 	printk("[haptic] hap->wave_play_rate_us = %d\n", hap->wave_play_rate_us);
 	hap->init_drive_period_code =
 			 hap->wave_play_rate_us / QPNP_HAP_RATE_CFG_STEP_US;
-	printk("[haptic]hap->init_drive_period_code = %d (%d / %d)\n", hap->init_drive_period_code, hap->wave_play_rate_us, QPNP_HAP_RATE_CFG_STEP_US) ;
-
+	printk("[haptic]hap->init_drive_period_code = %d (%d / %d)\n", hap->init_drive_period_code, hap->wave_play_rate_us, QPNP_HAP_RATE_CFG_STEP_US);
 
 	/*
 	 * The frequency of 19.2Mzhz RC clock is subject to variation. Currently
@@ -2646,17 +2648,15 @@ static int qpnp_hap_config(struct qpnp_hap *hap)
 	 */
 	if ((hap->act_type == QPNP_HAP_LRA) && hap->correct_lra_drive_freq
 			&& hap->misc_clk_trim_error_reg) {
-		printk("[haptic]TRIM register = 0x%x\n", hap->clk_trim_error_code);
-
+		pr_debug("[vib] TRIM register = 0x%x\n", hap->clk_trim_error_code);
 
 		/*
 		 * Extract the 4 LSBs and multiply by 7 to get
 		 * the %error in RC clock multiplied by 10
 		 */
-
 		rc_clk_err_percent_x10 = (hap->clk_trim_error_code & 0x0F) * 7;
-		printk("[haptic] rc_clk_err_percent_x10 = %d\n", rc_clk_err_percent_x10);
 
+		printk("[haptic] rc_clk_err_percent_x10 = %d\n", rc_clk_err_percent_x10);
 		/*
 		 * If the TRIM register holds value less than 0x80,
 		 * then there is a positive error in the RC clock.
@@ -2675,17 +2675,17 @@ static int qpnp_hap_config(struct qpnp_hap *hap)
 		 * Since 200KHz * 1/LRA drive frequency is already calculated
 		 * above we only do rest of the scaling here.
 		 */
-		if (hap->clk_trim_error_code & BIT(7)) {
+		if (hap->clk_trim_error_code & BIT(7)){
 			LRA_DRIVE_PERIOD_NEG_ERR(hap, rc_clk_err_percent_x10);
 			printk("[haptic] LRA_DRIVE_PERIOD_NEG_ERR()\n");
-		}else {
+		}
+		else{
 			LRA_DRIVE_PERIOD_POS_ERR(hap, rc_clk_err_percent_x10);
 			printk("[haptic] LRA_DRIVE_PERIOD_POS_ERR()\n");
 		}
 	}
 
 	printk("[haptic]Play rate code(init_drive_period_code) 0x%x\n", hap->init_drive_period_code);
-
 
 	val = hap->init_drive_period_code & QPNP_HAP_RATE_CFG1_MASK;
 	rc = qpnp_hap_write_reg(hap, QPNP_HAP_RATE_CFG1_REG(hap->base), val);
@@ -2713,10 +2713,9 @@ static int qpnp_hap_config(struct qpnp_hap *hap)
 			(hap->init_drive_period_code * (100 -
 			hap->drive_period_code_min_limit_percent_variation))
 			/ 100;
-		printk("[haptic]Drive period code max limit %x min limit %x\n",
+		printk("[haptic] Drive period code max limit %x min limit %x\n",
 			hap->drive_period_code_max_limit,
 			hap->drive_period_code_min_limit);
-
 	}
 
 	rc = qpnp_hap_brake_config(hap, NULL);
@@ -2795,7 +2794,6 @@ static int qpnp_hap_parse_dt(struct qpnp_hap *hap)
 		}
 
 		printk("[haptic] DTSI:misc-clk-trim-error-reg = 0x%x\n", temp);
-
 		if (!temp || temp > 0xFF) {
 			pr_err("Invalid misc-clk-trim-error-reg\n");
 			return -EINVAL;
@@ -2932,11 +2930,13 @@ static int qpnp_hap_parse_dt(struct qpnp_hap *hap)
 		hap->perform_lra_auto_resonance_search =
 				of_property_read_bool(pdev->dev.of_node,
 				"qcom,perform-lra-auto-resonance-search");
+
 		printk("[haptic] qcom,perform-lra-auto-resonance-search:%s\n", hap->perform_lra_auto_resonance_search ? "True" : "False");
 
 		hap->correct_lra_drive_freq =
 				of_property_read_bool(pdev->dev.of_node,
 						"qcom,correct-lra-drive-freq");
+
 		printk("[haptic] qcom,correct-lra-drive-freq=%s\n", hap->correct_lra_drive_freq ? "True" : "False");
 
 		hap->drive_period_code_max_limit_percent_variation = 25;
@@ -2964,7 +2964,7 @@ static int qpnp_hap_parse_dt(struct qpnp_hap *hap)
 									temp;
 			printk("[haptic] qcom,time-required-to-generate-back-emf-us = %d us\n", hap->time_required_to_generate_back_emf_us);
 		} else {
-			hap->time_required_to_generate_back_emf_us = 20;
+			hap->time_required_to_generate_back_emf_us = 0;
 			printk("[haptic] qcom,time-required-to-generate-back-emf-us = %d us\n", hap->time_required_to_generate_back_emf_us);
 		}
 	}
@@ -3095,9 +3095,9 @@ static int qpnp_hap_parse_dt(struct qpnp_hap *hap)
 	if (of_find_property(pdev->dev.of_node, "vcc_pon-supply", NULL))
 		hap->manage_pon_supply = true;
 
-
 	hap->auto_mode = of_property_read_bool(pdev->dev.of_node,
 				"qcom,lra-auto-mode");
+	
 	printk("[haptic] qpnp_hap_parse_dt()--\n");
 	return 0;
 }

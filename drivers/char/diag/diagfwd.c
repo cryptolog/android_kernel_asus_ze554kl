@@ -1486,6 +1486,7 @@ void diag_process_non_hdlc_pkt(unsigned char *buf, int len,
 		mutex_unlock(&driver->hdlc_recovery_mutex);
 		goto start;
 	}
+	mutex_unlock(&driver->hdlc_recovery_mutex);
 	goto end;
 
 start:
@@ -1506,7 +1507,6 @@ start:
 			diag_hdlc_start_recovery(buf, len, info);
 			break;
 		}
-
 		if ((pkt_len + header_len) > (len - read_bytes)) {
 			partial_pkt->read_len = len - read_bytes;
 			partial_pkt->total_len = pkt_len + header_len;
@@ -1572,6 +1572,9 @@ static int diagfwd_mux_write_done(unsigned char *buf, int len, int buf_ctxt,
 	switch (type) {
 	case TYPE_DATA:
 		if (peripheral >= 0 && peripheral < NUM_PERIPHERALS) {
+			DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
+			"Marking buffer as free after write done p: %d, t: %d, buf_num: %d\n",
+			    peripheral, type, num);
 			diagfwd_write_done(peripheral, type, num);
 			diag_ws_on_copy(DIAG_WS_MUX);
 		} else if (peripheral == APPS_DATA) {

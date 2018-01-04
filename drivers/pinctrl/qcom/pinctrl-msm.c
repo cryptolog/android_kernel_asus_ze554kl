@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2013, Sony Mobile Communications AB.
- * Copyright (c) 2013-2016, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -519,13 +519,8 @@ static void msm_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 {
 	unsigned gpio = chip->base;
 	unsigned i;
-	struct msm_pinctrl *pctrl = container_of(chip, struct msm_pinctrl, chip);
-         struct pin_desc *desc;
 
 	for (i = 0; i < chip->ngpio; i++, gpio++) {
-		desc = pin_desc_get(pctrl->pctrl, i);
-                  if (!desc->mux_owner)
-                         continue;
 		msm_gpio_dbg_show_one(s, NULL, chip, i, gpio);
 		seq_puts(s, "\n");
 	}

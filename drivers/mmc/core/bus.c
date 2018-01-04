@@ -28,12 +28,6 @@
 
 #define to_mmc_driver(d)	container_of(d, struct mmc_driver, drv)
 
-//ASUS_BSP Deeo : use work queue to deal with resume process +++
-static struct workqueue_struct *mmc_bus_resume_wq;
-static struct work_struct bus_resume_work;
-static struct mmc_host *g_host;
-//ASUS_BSP Deeo : use work queue to deal with resume process ---
-
 static ssize_t type_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
@@ -113,37 +107,10 @@ mmc_bus_uevent(struct device *dev, struct kobj_uevent_env *env)
 	return retval;
 }
 
-//ASUS_BSP Deeo : use work queue to deal with resume process +++
-static void mmc_bus_resume_work(struct work_struct *work)
-{
-	int ret=0;
-
-	ret = g_host->bus_ops->resume(g_host);
-	if (ret)
-		pr_warn("%s: error %d during resume (card was removed?)\n",
-			mmc_hostname(g_host), ret);
-}
-//ASUS_BSP Deeo : use work queue to deal with resume process ---
-
 static int mmc_bus_probe(struct device *dev)
 {
 	struct mmc_driver *drv = to_mmc_driver(dev->driver);
 	struct mmc_card *card = mmc_dev_to_card(dev);
-	//ASUS_BSP Deeo : get host for separate mmc0 & mmc1 +++
-	struct mmc_host *host = card->host;
-	g_host = host;
-	//ASUS_BSP Deeo : get host for separate mmc0 & mmc1 ---
-
-	//ASUS_BSP Deeo : use work queue to deal with resume process +++
-	if (!strcmp(mmc_hostname(host),"mmc1")) {
-		//printk("[SD] %s create wq\n", mmc_hostname(host));
-		mmc_bus_resume_wq = create_singlethread_workqueue("mmc_bus_resume_wq");
-		if (!mmc_bus_resume_wq) {
-			printk("[MMC][BUS] %s: create resume workqueue failed\n", __func__);
-		}
-		INIT_WORK(&bus_resume_work, &mmc_bus_resume_work);
-	}
-	//ASUS_BSP Deeo : use work queue to deal with resume process ---
 
 	return drv->probe(card);
 }
@@ -155,14 +122,6 @@ static int mmc_bus_remove(struct device *dev)
 
 	drv->remove(card);
 
-	//ASUS_BSP Deeo : use work queue to deal with resume process +++
-	if (!strcmp(mmc_hostname(g_host),"mmc1")) {
-		//printk("[SD] %s destroy wq\n", mmc_hostname(g_host));
-		if (mmc_bus_resume_wq) {
-			destroy_workqueue(mmc_bus_resume_wq);
-		}
-	}
-	//ASUS_BSP Deeo : use work queue to deal with resume process +++
 	return 0;
 }
 
@@ -207,7 +166,6 @@ static int mmc_bus_suspend(struct device *dev)
 
 	if (mmc_bus_needs_resume(host))
 		return 0;
-
 	ret = host->bus_ops->suspend(host);
 
 	/*
@@ -236,16 +194,10 @@ static int mmc_bus_resume(struct device *dev)
 		goto skip_full_resume;
 	}
 
-	//ASUS_BSP Deeo : use work queue to deal with resume process +++
-	if (!strcmp(mmc_hostname(host),"mmc1")) {
-		queue_work(mmc_bus_resume_wq, &bus_resume_work);
-	}else {
-		ret = host->bus_ops->resume(host);
-		if (ret)
-			pr_warn("%s: error %d during resume (card was removed?)\n",
-				mmc_hostname(host), ret);
-	}
-	//ASUS_BSP Deeo : use work queue to deal with resume process ---
+	ret = host->bus_ops->resume(host);
+	if (ret)
+		pr_warn("%s: error %d during resume (card was removed?)\n",
+			mmc_hostname(host), ret);
 
 skip_full_resume:
 	ret = pm_generic_resume(dev);
@@ -476,7 +428,6 @@ void mmc_remove_card(struct mmc_card *card)
 	}
 
 	kfree(card->wr_pack_stats.packing_events);
-	kfree(card->cached_ext_csd);
 
 	put_device(&card->dev);
 }

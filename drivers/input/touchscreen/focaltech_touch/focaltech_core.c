@@ -84,6 +84,7 @@ EXPORT_SYMBOL(g_focal_touch_init_status);
 
 bool disable_tp_flag;
 extern int HALLsensor_gpio_value(void);
+
 EXPORT_SYMBOL(disable_tp_flag);
 static bool hall_sensor_detect = false;
 static bool key_already_down = false;
@@ -572,7 +573,7 @@ static int fts_input_dev_report_key_event(struct ts_event *event, struct fts_ts_
                             event->au8_touch_event[i] == 2)
                         {
 							if (hall_sensor_detect)
-							msleep(20);
+								msleep(20);
 							if (HALLsensor_gpio_value() > 0)
 							{
 								if(once_key_event == false){
@@ -592,7 +593,7 @@ static int fts_input_dev_report_key_event(struct ts_event *event, struct fts_ts_
                         else
                         {
 							if (hall_sensor_detect)
-							msleep(20);
+								msleep(20);
 							if ((HALLsensor_gpio_value() > 0) || (key_already_down == true))
 							{
 								input_report_key(data->input_dev, data->pdata->keys[i], 0);
@@ -1703,6 +1704,7 @@ static int fts_ts_probe(struct i2c_client *client, const struct i2c_device_id *i
 		pr_err("[FTS][Touch] lcdid = %d no input touch \n",g_asus_lcdID);
 		return 0;
 		}
+
 	pr_err("[FTS][tocuh]fts_ts_probe! \n");
 
     /* 1. Get Platform data */

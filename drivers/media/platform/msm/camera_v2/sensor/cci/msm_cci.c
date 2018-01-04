@@ -331,6 +331,9 @@ static int32_t msm_cci_addr_to_num_bytes(
 	case MSM_CAMERA_I2C_3B_ADDR:
 		retVal = 3;
 		break;
+	case MSM_CAMERA_I2C_DWORD_ADDR:
+		retVal = 4;
+		break;
 	default:
 		pr_err("%s: %d failed: %d\n", __func__, __LINE__, addr_type);
 		retVal = 1;
@@ -403,6 +406,10 @@ static int32_t msm_cci_calc_cmd_len(struct cci_device *cci_dev,
 			if (cmd->reg_addr + 1 ==
 				(cmd+1)->reg_addr) {
 				len += data_len;
+				if (len > cci_dev->payload_size) {
+					len = len - data_len;
+					break;
+				}
 				*pack += data_len;
 			} else
 				break;
@@ -1600,6 +1607,12 @@ static int32_t msm_cci_write(struct v4l2_subdev *sd,
 			__LINE__, cci_dev, c_ctrl);
 		rc = -EINVAL;
 		return rc;
+	}
+
+	if (cci_dev->cci_state != CCI_STATE_ENABLED) {
+		pr_err("%s invalid cci state %d\n",
+			__func__, cci_dev->cci_state);
+		return -EINVAL;
 	}
 
 	if (c_ctrl->cci_info->cci_i2c_master >= MASTER_MAX

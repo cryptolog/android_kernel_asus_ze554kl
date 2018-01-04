@@ -2342,7 +2342,7 @@ struct thermal_zone_device *thermal_zone_device_register(const char *type,
 	result = device_create_file(&tz->device, &dev_attr_temp);
 	if (result)
 		goto unregister;
-
+		
 	/* ASUS_BSP (ShowCai) +++ For ATD parser format */
 	result = device_create_file(&tz->device, &dev_attr_mtemp);
 	if (result)

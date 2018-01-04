@@ -31,7 +31,7 @@
 	vdd-supply = <&pm660l_l4>;
 	qcom,vdd-voltage-level = <2950000 2950000>;
 	qcom,vdd-current-level = <200 570000>;
-	/*ASUS_BPS Deeo : make sure vdd power always on*/
+	/* ASUS_BPS Deeo: make sure vdd power always on*/
 	qcom,vdd-always-on;
 
 	/* device communication power supply */
@@ -120,8 +120,8 @@
 		compatible = "qcom,msm-ssc-sensors";
 	};
 
-	// ASUS_BSP +++ Jacob Fingerprint sensor
-	asus-fingerprint {
+	// ASUS_BSP +++ Fingerprint sensor
+	goodixfp {
 		compatible = "asus,fingerprint";
 		asus-fp,sleep-gpio = <&tlmm 20 0x0>;
 		asus-fp,irq-gpio = <&tlmm 72 0x2008>;
@@ -134,7 +134,17 @@
 		pinctrl-0 = <&fp_int_active>;
 		pinctrl-1 = <&fp_int_suspend>;
 	};
-	// ASUS_BSP --- Jacob Fingerprint sensor
+	// ASUS_BSP ---  Fingerprint sensor
+
+	// ASUS_BSP +++ ShawnHuang HALL sensor
+        hall_sensor {
+                compatible = "qcom,hall";
+                pinctrl-names = "hall_gpio_high","hall_gpio_low";
+                pinctrl-0 = <&gpio_hall_active>;
+                pinctrl-1 = <&gpio_hall_suspend>;
+                qcom,hall-gpio = <&tlmm 75 0x0>;
+        };
+        // ASUS_BSP --- ShawnHuang HALL sensor
 };
 
 &qusb_phy0 {
@@ -151,16 +161,6 @@
 };
 
 &pm660_gpios {
-	/* GPIO 11 for home key */
-	gpio@ca00 {
-		status = "ok";
-		qcom,mode = <0>;
-		qcom,pull = <0>;
-		qcom,vin-sel = <0>;
-		qcom,src-sel = <0>;
-		qcom,out-strength = <1>;
-	};
-
 	/* GPIO 4 (NFC_CLK_REQ) */
 	gpio@c300 {
 		qcom,mode = <0>;
@@ -171,8 +171,6 @@
 	};
 };
 
-
-//+++.....................................................Peripheral bus part....................................................+++//
 &i2c_1 {	/* BLSP1 QUP0 for Sensors */
 	status = "okay";
 
@@ -183,17 +181,7 @@
 		vinc-supply=<&pm660l_l6>;
 	};
 	/* ASUS_BSP: Vincent: rgb sensor i2c --*/
-	
-	/* ASUS_BSP: Vincent: Laser sensor i2c ++*/
-	qcom_olivia_i2c@4C {
-		compatible = "heptagon,olivia";
-		reg = <0x4C>;		
-        chipid = <0xAD02>;
-		label = "Olivia";
-		vinc-supply=<&pm660l_l6>;
-	};
-	/* ASUS_BSP: Vincent: Laser sensor i2c --*/	
-	
+
 	/* ASUS_BSP +++ ShawnHuang CM36656 */
 	cm36656_i2c@60 {
 		compatible = "qcom,cm36656";
@@ -204,77 +192,9 @@
 		qcom,alsps-gpio = <&tlmm 45 0x0>;
 	};
 	/* ASUS_BSP --- ShawnHuang CM36656 */
-
 };
 
-&i2c_2 {	/* BLSP1 QUP1 for Power */
-	status = "okay";
-
-	us5587@38 {
-		compatible = "qcom,us5587";
-		reg = <0x38>;
-		#address-cells = <1>;
-		#size-cells = <0>;
-	};
-};
-
-&i2c_4 {	/* BLSP1 QUP3 for Touch */
-	status = "okay";
-	focaltech@38 {
- 		compatible = "focaltech,fts";
- 	//compatible = "focaltech,ft3517";
-  		reg = <0x38>;
-  		interrupt-parent = <&tlmm>;
-  		interrupts = <67 0x2008>;
-  		//vdd-supply = <&pm660l_l3>;
-		vcc_i2c-supply = <&pm660_l14>;
- 		/* pins used by touchscreen */
-  		/*pinctrl-names = "pmx_ts_active","pmx_ts_suspend","pmx_ts_release";
- 		pinctrl-0 = <&ts_active>;
- 		pinctrl-1 = <&ts_suspend>;
-  		//pinctrl-2 = <&ts_release>;*/
- 		focaltech,name = "ft8716";
- 		//focaltech,family-id = <0x58>;
- 		focaltech,reset-gpio = <&tlmm 66 0x0>;
-  		focaltech,irq-gpio = <&tlmm 67 0x0>;
-  		focaltech,display-coords = <0 0 1080 1920>;
-//  		focaltech,panel-coords = <0 0 1080 1920>;
-//		focaltech,button-map= <139 102 158>;
-		focaltech,have-key;
-		focaltech,key-number = <3>;
-		focaltech,max-touch-number = <10>;
-		focaltech,keys = <158 102 139>;
-		focaltech,key-y-coord = <2000>;
-		focaltech,key-x-coord = <200 400 600>;
-  
-  	};
-	synaptics_dsx@20 {
-		compatible = "synaptics,dsx-i2c";
-		reg = <0x20>;
-		interrupt-parent = <&tlmm>;
-		interrupts = <67 0x2008>;
-		vcc_i2c-supply = <&pm660_l14>;
-		//synaptics,pwr-reg-name = "vdd_ana";
-		synaptics,bus-reg-name = "vcc_i2c";
-		synaptics,irq-gpio = <&tlmm 67 0x2008>;
-//		synaptics,reset-gpio  = <&tlmm 66 0x0>;
-		synaptics,irq-on-state = <0>;
-		synaptics,irq-flags = <0x2008>; // IRQF_ONESHOT | IRQF_TRIGGER_LOW 
-		synaptics,power-delay-ms = <200>;
-		synaptics,reset-delay-ms = <200>;
-		synaptics,reset-on-state = <0>;
-		synaptics,reset-active-ms = <20>;
-		synaptics,ub-i2c-addr = <0x2c>;
-		// uncomment and update line below as appropriate if there are 0D buttons 
-		synaptics,cap-button-codes = <158 139 139>;
-		// uncomment and update lines below as appropriate if there are virtual buttons 
-		// synaptics,vir-button-codes = <102 100 900 100 60 158 300 900 100 60>; 
-		// synaptics,max-y-for-2d = <800>; 
-	};
-
-};
-
-&i2c_6 {	/* BLSP2 QUP1 for NFC */
+&i2c_6 { /* BLSP1 QUP6 (NFC) */
 	status = "okay";
 	nq@28 {
 		compatible = "qcom,nq-nci";
@@ -296,14 +216,65 @@
 	};
 };
 
+&i2c_4 {	/* BLSP1 QUP3 for Touch */
+	status = "okay";
+status = "okay";
+	focaltech@38 {
+		compatible = "focaltech,fts";
+		//compatible = "focaltech,ft3517";
+		reg = <0x38>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <67 0x2008>;
+		//vdd-supply = <&pm660l_l3>;
+		vcc_i2c-supply = <&pm660_l14>;
+		/* pins used by touchscreen */
+		/*pinctrl-names = "pmx_ts_active","pmx_ts_suspend","pmx_ts_release";
+		pinctrl-0 = <&ts_active>;
+		pinctrl-1 = <&ts_suspend>;
+		//pinctrl-2 = <&ts_release>;*/
+		focaltech,name = "ft8716";
+		//focaltech,family-id = <0x58>;
+		focaltech,reset-gpio = <&tlmm 66 0x0>;
+		focaltech,irq-gpio = <&tlmm 67 0x0>;
+		focaltech,display-coords = <0 0 1080 1920>;
+		//focaltech,panel-coords = <0 0 1080 1920>;
+		//focaltech,button-map= <139 102 158>;
+		focaltech,have-key;
+		focaltech,key-number = <3>;
+		focaltech,max-touch-number = <10>;
+		focaltech,keys = <158 102 139>;
+		focaltech,key-y-coord = <2000>;
+		focaltech,key-x-coord = <200 400 600>;
+	};
+	synaptics_dsx@20 {
+		compatible = "synaptics,dsx-i2c";
+		reg = <0x20>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <67 0x2008>;
+		vcc_i2c-supply = <&pm660_l14>;
+		//synaptics,pwr-reg-name = "vdd_ana";
+		synaptics,bus-reg-name = "vcc_i2c";
+		synaptics,irq-gpio = <&tlmm 67 0x2008>;
+		//synaptics,reset-gpio  = <&tlmm 66 0x0>;
+		synaptics,irq-on-state = <0>;
+		synaptics,irq-flags = <0x2008>; // IRQF_ONESHOT | IRQF_TRIGGER_LOW
+		synaptics,power-delay-ms = <200>;
+		synaptics,reset-delay-ms = <200>;
+		synaptics,reset-on-state = <0>;
+		synaptics,reset-active-ms = <20>;
+		synaptics,ub-i2c-addr = <0x2c>;
+		// uncomment and update line below as appropriate if there are 0D buttons
+		synaptics,cap-button-codes = <158 139 139>;
+		// uncomment and update lines below as appropriate if there are virtual buttons
+		// synaptics,vir-button-codes = <102 100 900 100 60 158 300 900 100 60>;
+		// synaptics,max-y-for-2d = <800>;
+	};
+};
+
 &i2c_7 {	/* BLSP2 QUP2 for Audio */
 	status = "okay";
 
 };
-
-
-//---.....................................................Peripheral bus part....................................................---//
-
 
 &pm660l_gpios {
 	/* GPIO 7 for VOL_UP */
@@ -315,10 +286,17 @@
 		qcom,src-sel = <0>;
 		qcom,out-strength = <1>;
 	};
+	
+	/* GPIO 5 for Fingerprint */
+	gpio@c400 {
+		reg = <0xc400 0x100>;
+		qcom,pin-num = <5>;
+		status = "ok";
+	};
 };
 
 &tlmm {
-	/*pmx_ts_rst_active {
+	pmx_ts_rst_active {
 		ts_rst_active: ts_rst_active {
 			mux {
 				pins = "gpio66";
@@ -346,7 +324,7 @@
 				bias-pull-down;
 			};
 		};
-	};*/
+	};
 };
 
 &ssphy {
@@ -389,46 +367,34 @@
 		};
 */
 	};
-
-	/*hbtp {
-		compatible = "qcom,hbtp-input";
-		pinctrl-names = "pmx_ts_active", "pmx_ts_suspend";
-		pinctrl-0 = <&ts_rst_active>;
-		pinctrl-1 = <&ts_rst_suspend>;
-		vcc_ana-supply = <&pm660l_l3>;
-		vcc_dig-supply = <&pm660_l13>;
-		qcom,afe-load = <20000>;
-		qcom,afe-vtg-min = <3008000>;
-		qcom,afe-vtg-max = <3008000>;
-		qcom,dig-load = <40000>;
-		qcom,dig-vtg-min = <1808000>;
-		qcom,dig-vtg-max = <1808000>;
-		qcom,fb-resume-delay-us = <10000>;
-		qcom,afe-power-on-delay-us = <1000>;
-		qcom,afe-power-off-delay-us = <6>;
-	};*/
-
-	// ASUS_BSP +++ ShawnHuang HALL sensor
-	hall_sensor {
-		compatible = "qcom,hall";
-		pinctrl-names = "hall_gpio_high","hall_gpio_low";
-		pinctrl-0 = <&gpio_hall_active>;
-		pinctrl-1 = <&gpio_hall_suspend>;			
-		qcom,hall-gpio = <&tlmm 75 0x0>;
-	};
-	// ASUS_BSP --- ShawnHuang HALL sensor
 };
 
 / {
 	qrd_batterydata: qcom,battery-data {
 		qcom,batt-id-range-pct = <15>;
 
-		#include "fg-gen3-batterydata-coslight-3150mah_4p35v.dtsi"
+		#include "fg-gen3-batterydata-coslight-3150mah_4p35v.dtsi" //ASUS BSP : LiJen Battery
 	};
 };
 
 &pm660_fg {
 	qcom,battery-data = <&qrd_batterydata>;
+	qcom,fg-jeita-thresholds = <0 10 50 60>;
+	qcom,battery-thermal-coefficients = [9d 50 ff];
+	qcom,fg-cutoff-voltage = <3400>; //ASUS BSP : LiJen Battery
+	qcom,fg-empty-voltage = <3000>; //ASUS BSP : LiJen Battery
+};
+
+&i2c_2 {
+	status = "ok";
+	smb1351_charger: smb1351-charger@1d {
+		compatible = "qcom,smb1351-charger";
+		reg = <0x1d>;
+		qcom,parallel-charger;
+		qcom,float-voltage-mv = <4400>;
+		qcom,recharge-mv = <100>;
+		qcom,parallel-en-pin-polarity = <1>;
+	};
 };
 
 /delete-node/ &tasha_hph_en0;
@@ -458,10 +424,22 @@
 	qcom,wsa-aux-dev-prefix = "SpkrLeft", "SpkrLeft";
 };
 
-//ASUS BSP : Austin_Tsneg Charger +++
+//ASUS BSP :  Charger +++
+&i2c_2 {	/* BLSP1 QUP1 for Power */
+	status = "okay";
+
+	us5587@38 {
+		compatible = "qcom,us5587";
+		reg = <0x38>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
+};
+
+
 &pm660_charger {
-	pinctrl-0 = <&usb_switch_active>;
-	pinctrl-1 = <&usb_switch_suspend>;
+	pinctrl-0 = <&usb_switch_active &LID_en_active>;
+	pinctrl-1 = <&usb_switch_suspend &LID_en_sleep>;
 	ADC_SW_EN-gpios59 = <&tlmm 59 0x0>;
 	ADCPWREN_PMI_GP1-gpios34 = <&tlmm 34 0x0>;
 	USB_THERMAL_ALERT-gpios52 = <&tlmm 52 0x0>;
@@ -469,4 +447,5 @@
 	USB_LID_EN-gpios71 = <&tlmm 71 0x0>;
 	USB_WATER_PROOF-gpios73 = <&tlmm 73 0x0>;
 };
-//ASUS BSP : Austin_Tsneg Charger ---
+//ASUS BSP :  Charger ---
+

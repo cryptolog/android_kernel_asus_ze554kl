@@ -131,6 +131,8 @@ struct mmc_ext_csd {
 #define MMC_BKOPS_URGENCY_MASK 0x3
 	u8			raw_bkops_status;	/* 246 */
 	u8			raw_sectors[4];		/* 212 - 4 bytes */
+	u8			device_life_time_est_typ_a;	/* 268 */
+	u8			device_life_time_est_typ_b;	/* 269 */
 	u8			cmdq_depth;		/* 307 */
 	u8			cmdq_support;		/* 308 */
 	u8			barrier_support;	/* 486 */
@@ -488,7 +490,6 @@ struct mmc_card {
 //ASUS_BSP Deeo : mmc suspend stress test ---
 	struct notifier_block        reboot_notify;
 	enum mmc_pon_type pon_type;
-	u8 *cached_ext_csd;
 	bool cmdq_init;
 	struct mmc_bkops_info bkops;
 	bool err_in_sdr104;

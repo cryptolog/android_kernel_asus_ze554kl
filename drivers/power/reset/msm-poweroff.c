@@ -47,7 +47,7 @@
 #define SCM_EDLOAD_MODE			0X01
 #define SCM_DLOAD_CMD			0x10
 #define SCM_DLOAD_MINIDUMP		0X20
-
+#define SCM_DLOAD_BOTHDUMPS	(SCM_DLOAD_MINIDUMP | SCM_DLOAD_FULLDUMP)
 
 static int restart_mode;
 static void *restart_reason;
@@ -64,10 +64,26 @@ static void scm_disable_sdi(void);
 */
 
 #ifdef ASUS_SHIP_BUILD
-static int download_mode = 0;
+int download_mode = 0;
 #else
-static int download_mode = 1;
+int download_mode = 1;
 #endif
+
+//+++ ASUS_BSP : set download mode cmdline
+int g_force_ramdump = 0;
+static int set_download_mode(char *str)
+{
+	if ( strcmp("y", str) == 0 ) {
+		download_mode = 1;
+		g_force_ramdump = 1;
+	} else
+		download_mode = 0;
+
+	printk("download mode = %d\n",download_mode);
+	return 0;
+}
+__setup("RDUMP=", set_download_mode);
+//--- ASUS_BSP : set download mode cmdline
 
 #ifdef CONFIG_QCOM_DLOAD_MODE
 #define EDL_MODE_PROP "qcom,msm-imem-emergency_download_mode"
@@ -77,8 +93,8 @@ static int download_mode = 1;
 #endif
 
 static int in_panic;
-//static int download_mode = 1;
 static int dload_type = SCM_DLOAD_FULLDUMP;
+//static int download_mode = 1;
 static struct kobject dload_kobj;
 static void *dload_mode_addr, *dload_type_addr;
 static bool dload_mode_enabled;
@@ -140,7 +156,7 @@ int scm_set_dload_mode(int arg1, int arg2)
 				&desc);
 }
 
-static void set_dload_mode(int on)
+void set_dload_mode(int on)
 {
 	int ret;
 
@@ -208,7 +224,7 @@ static int dload_set(const char *val, struct kernel_param *kp)
 	return 0;
 }
 #else
-static void set_dload_mode(int on)
+void set_dload_mode(int on)
 {
 	return;
 }
@@ -307,6 +323,7 @@ static void msm_restart_prepare(const char *cmd)
 	} else {
 		qpnp_pon_system_pwr_off(PON_POWER_OFF_HARD_RESET);
 	}
+
 	if (!in_panic) {
 		// Normal reboot. Clean the printk buffer magic
 		printk_buffer_slot2_addr = (ulong *)PRINTK_BUFFER_SLOT2;
@@ -348,12 +365,12 @@ static void msm_restart_prepare(const char *cmd)
 				PON_RESTART_REASON_SHIPMODE);
 			__raw_writel(0x6f656d43, restart_reason);
 		// --- ASUS_BSP: add asus reboot reason for ATD interface
-		// +++ ASUS_BSP: add for asus user unlock
+		// +++ ASUS_BSP PeterYeh: add for asus user unlock
 		} else if (!strncmp(cmd, "app-unlock", 10)) {
 				qpnp_pon_set_restart_reason(
 				PON_RESTART_REASON_UNLOCK);
 			__raw_writel(0x6f656d08, restart_reason);
-		// --- ASUS_BSP: add for asus user unlock
+		// --- ASUS_BSP PeterYeh: add for asus user unlock
 		} else if (!strncmp(cmd, "oem-", 4)) {
 			unsigned long code;
 			int ret;
@@ -417,6 +434,7 @@ static void do_msm_restart(enum reboot_mode reboot_mode, const char *cmd)
 		msm_trigger_wdog_bite();
 #endif
 
+	scm_disable_sdi();
 	halt_spmi_pmic_arbiter();
 	deassert_ps_hold();
 
@@ -523,7 +541,8 @@ static ssize_t show_dload_mode(struct kobject *kobj, struct attribute *attr,
 				char *buf)
 {
 	return scnprintf(buf, PAGE_SIZE, "DLOAD dump type: %s\n",
-			(dload_type == SCM_DLOAD_MINIDUMP) ? "mini" : "full");
+		(dload_type == SCM_DLOAD_BOTHDUMPS) ? "both" :
+		((dload_type == SCM_DLOAD_MINIDUMP) ? "mini" : "full"));
 }
 
 static size_t store_dload_mode(struct kobject *kobj, struct attribute *attr,
@@ -537,8 +556,16 @@ static size_t store_dload_mode(struct kobject *kobj, struct attribute *attr,
 			return -ENODEV;
 		}
 		dload_type = SCM_DLOAD_MINIDUMP;
-	} else {
-		pr_err("Invalid value. Use 'full' or 'mini'\n");
+	} else if (sysfs_streq(buf, "both")) {
+		if (!minidump_enabled) {
+			pr_err("Minidump not enabled, setting fulldump only\n");
+			dload_type = SCM_DLOAD_FULLDUMP;
+			return count;
+		}
+		dload_type = SCM_DLOAD_BOTHDUMPS;
+	} else{
+		pr_err("Invalid Dump setup request..\n");
+		pr_err("Supported dumps:'full', 'mini', or 'both'\n");
 		return -EINVAL;
 	}
 

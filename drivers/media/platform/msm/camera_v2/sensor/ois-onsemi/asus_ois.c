@@ -628,8 +628,7 @@ static ssize_t sensor_i2c_debug_write(struct file *filp, const char __user *buff
 		return -EFAULT;
 	}
 
-	n = sscanf(messages,"%x %x %x",&val[0],&val[1],&val[2]);
-
+	n = sscanf(messages,"%x %x %x %x",&val[0],&val[1],&val[2],&val[3]);
 	if(n < 3 || n > 4 )
 	{
 		rc = -1;
@@ -678,15 +677,14 @@ static ssize_t sensor_i2c_debug_write(struct file *filp, const char __user *buff
 		goto RETURN;
 	}
 
-	pr_err("gona %s Camera ID 0x%X reg 0x%04x, data type %s\n",
+	pr_err("ryan_k gona %s Camera ID 0x%X reg 0x%04x, data type %s\n",
 			g_camera_sensor_operation ? "WRITE":"READ",
 			g_camera_id,
 			g_camera_reg_addr,
 			g_camera_data_type == MSM_CAMERA_I2C_BYTE_DATA?"BYTE":"WORD"
 			);
 
-
-	if(g_operation == 1)
+	if(g_camera_sensor_operation == 1)
 	{
 		rc = sensor_ctrls[g_camera_id]->sensor_i2c_client->i2c_func_tbl->i2c_write(
 			sensor_ctrls[g_camera_id]->sensor_i2c_client,
@@ -694,7 +692,6 @@ static ssize_t sensor_i2c_debug_write(struct file *filp, const char __user *buff
 			g_camera_reg_val,
 			g_camera_data_type
 		);
-
 		if(rc < 0)
 		{
 			pr_err("write 0x%x to camera id %d addr 0x%04x FAIL\n",g_camera_reg_val,g_camera_id,g_camera_reg_addr);

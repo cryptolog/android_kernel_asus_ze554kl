@@ -3,6 +3,7 @@
  *
  * Copyright 2005 Phil Blundell
  * Copyright 2010, 2011 David Jander <david@protonic.nl>
+ * Copyright (c) 2015, 2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -32,9 +33,10 @@
 #include <linux/of_irq.h>
 #include <linux/spinlock.h>
 #include <linux/pinctrl/consumer.h>
+#include <linux/syscore_ops.h>
 
 struct gpio_button_data {
-	struct gpio_keys_button *button; //ASUS BSP Freddy remove const
+	const struct gpio_keys_button *button;
 	struct input_dev *input;
 
 	struct timer_list release_timer;
@@ -56,6 +58,11 @@ struct gpio_keys_drvdata {
 	struct mutex disable_lock;
 	struct gpio_button_data data[0];
 };
+
+static struct device *global_dev;
+static struct syscore_ops gpio_keys_syscore_pm_ops;
+
+static void gpio_keys_syscore_resume(void);
 
 /*
  * SYSFS interface for enabling/disabling keys and switches:
@@ -339,22 +346,54 @@ static struct attribute_group gpio_keys_attr_group = {
 };
 
 unsigned int b_press = 0; //ASUS BSP : Eason
+//thomas ++ for ramdump
+unsigned int vol_up_press = 0;
+unsigned int vol_down_press_count = 0;
+extern void set_dload_mode(int on);
+extern void msm_set_restart_mode(int mode);
+extern int download_mode;
+extern int g_QPST_property;
 
 static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 {
 	const struct gpio_keys_button *button = bdata->button;
 	struct input_dev *input = bdata->input;
 	unsigned int type = button->type ?: EV_KEY;
-	int state = gpio_get_value_cansleep(button->gpio);
+	int state;
+
+	state = (__gpio_get_value(button->gpio) ? 1 : 0) ^ button->active_low;
+	printk("[Keys][gpio_keys.c] keycode=%d, state=%s\n",
+		button->code, state?"press":"release");  //ASUS BSP PeterYeh +++
+
+	if (button->code == 115){
+		if (state == 1) {
+			vol_up_press = 1;
+		}
+		else {
+			printk("[Keys][gpio_keys.c] keycode(115) count = %d\n", vol_down_press_count);
+			vol_up_press = 0;
+			vol_down_press_count = 0;
+		}
+	}
+	if (vol_up_press) {
+		if (button->code == 114){
+			if (state == 1)
+				vol_down_press_count++;
+		}
+		if (vol_down_press_count == 10) {
+			if(g_QPST_property == 1) {
+				download_mode = 1;
+				set_dload_mode(download_mode);
+				msm_set_restart_mode(download_mode);
+				panic("special panic...\r\n");
+			}
+		}
+	}
 
 	if (state < 0) {
 		dev_err(input->dev.parent, "failed to get gpio state\n");
 		return;
 	}
-
-	state = (state ? 1 : 0) ^ button->active_low;
-	printk("[Keys][gpio_keys.c] keycode=%d, state=%s\n",
-			button->code, state?"press":"release");  //ASUS BSP Freddy +++
 
 	if (type == EV_ABS) {
 		if (state)
@@ -455,7 +494,7 @@ static void gpio_keys_quiesce_key(void *data)
 static int gpio_keys_setup_key(struct platform_device *pdev,
 				struct input_dev *input,
 				struct gpio_button_data *bdata,
-				struct gpio_keys_button *button) //ASUS BSP Freddy remove const
+				const struct gpio_keys_button *button)
 {
 	const char *desc = button->desc ? button->desc : "gpio_keys";
 	struct device *dev = &pdev->dev;
@@ -558,7 +597,7 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 	return 0;
 }
 
-/*static void gpio_keys_report_state(struct gpio_keys_drvdata *ddata)
+static void gpio_keys_report_state(struct gpio_keys_drvdata *ddata)
 {
 	struct input_dev *input = ddata->input;
 	int i;
@@ -569,7 +608,7 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 			gpio_keys_gpio_report_event(bdata);
 	}
 	input_sync(input);
-}*/
+}
 
 static int gpio_keys_pinctrl_configure(struct gpio_keys_drvdata *ddata,
 							bool active)
@@ -619,7 +658,7 @@ static int gpio_keys_open(struct input_dev *input)
 	}
 
 	/* Report current state of buttons that are connected to GPIOs */
-	//gpio_keys_report_state(ddata);
+	gpio_keys_report_state(ddata);
 
 	return 0;
 }
@@ -669,6 +708,8 @@ gpio_keys_get_devtree_pdata(struct device *dev)
 	pdata->nbuttons = nbuttons;
 
 	pdata->rep = !!of_get_property(node, "autorepeat", NULL);
+	pdata->name = of_get_property(node, "input-name", NULL);
+	pdata->use_syscore = of_property_read_bool(node, "use-syscore");
 
 	i = 0;
 	for_each_child_of_node(node, pp) {
@@ -715,7 +756,7 @@ gpio_keys_get_devtree_pdata(struct device *dev)
 		button->can_disable = !!of_get_property(pp, "linux,can-disable", NULL);
 
 		if (of_property_read_u32(pp, "debounce-interval",
-					 &button->debounce_interval))
+					&button->debounce_interval))
 			button->debounce_interval = 5;
 	}
 
@@ -752,8 +793,6 @@ static int gpio_keys_probe(struct platform_device *pdev)
 	int wakeup = 0;
 	struct pinctrl_state *set_state;
 
-	printk("[Keys][gpio_keys.c] gpio_keys_probe() +++\n");
-
 	if (!pdata) {
 		pdata = gpio_keys_get_devtree_pdata(dev);
 		if (IS_ERR(pdata))
@@ -774,6 +813,7 @@ static int gpio_keys_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
+	global_dev = dev;
 	ddata->pdata = pdata;
 	ddata->input = input;
 	mutex_init(&ddata->disable_lock);
@@ -815,7 +855,7 @@ static int gpio_keys_probe(struct platform_device *pdev)
 	}
 
 	for (i = 0; i < pdata->nbuttons; i++) {
-		struct gpio_keys_button *button = &pdata->buttons[i]; //ASUS BSP Freddy remover const
+		const struct gpio_keys_button *button = &pdata->buttons[i];
 		struct gpio_button_data *bdata = &ddata->data[i];
 
 		error = gpio_keys_setup_key(pdev, input, bdata, button);
@@ -842,7 +882,11 @@ static int gpio_keys_probe(struct platform_device *pdev)
 
 	device_init_wakeup(&pdev->dev, wakeup);
 
-	printk("[Keys][gpio_keys.c] gpio_keys_probe() ---\n");
+	if (pdata->use_syscore)
+		gpio_keys_syscore_pm_ops.resume = gpio_keys_syscore_resume;
+
+	register_syscore_ops(&gpio_keys_syscore_pm_ops);
+
 	return 0;
 
 err_remove_group:
@@ -865,6 +909,7 @@ err_setup_key:
 static int gpio_keys_remove(struct platform_device *pdev)
 {
 	sysfs_remove_group(&pdev->dev.kobj, &gpio_keys_attr_group);
+	unregister_syscore_ops(&gpio_keys_syscore_pm_ops);
 
 	device_init_wakeup(&pdev->dev, 0);
 
@@ -872,6 +917,41 @@ static int gpio_keys_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM_SLEEP
+static void gpio_keys_syscore_resume(void)
+{
+	struct gpio_keys_drvdata *ddata = dev_get_drvdata(global_dev);
+	struct input_dev *input = ddata->input;
+	struct gpio_button_data *bdata = NULL;
+	int error = 0;
+	int i;
+
+	if (ddata->key_pinctrl) {
+		error = gpio_keys_pinctrl_configure(ddata, true);
+		if (error) {
+			dev_err(global_dev, "failed to put the pin in resume state\n");
+			return;
+		}
+	}
+
+	if (device_may_wakeup(global_dev)) {
+		for (i = 0; i < ddata->pdata->nbuttons; i++) {
+			bdata = &ddata->data[i];
+			if (bdata->button->wakeup)
+				disable_irq_wake(bdata->irq);
+		}
+	} else {
+		mutex_lock(&input->mutex);
+		if (input->users)
+			error = gpio_keys_open(input);
+		mutex_unlock(&input->mutex);
+	}
+
+	if (error)
+		return;
+
+	gpio_keys_report_state(ddata);
+}
+
 static int gpio_keys_suspend(struct device *dev)
 {
 	struct gpio_keys_drvdata *ddata = dev_get_drvdata(dev);
@@ -909,6 +989,11 @@ static int gpio_keys_resume(struct device *dev)
 	int error = 0;
 	int i;
 
+	if (ddata->pdata->use_syscore == true) {
+		dev_dbg(global_dev, "Using syscore resume, no need of this resume.\n");
+		return 0;
+	}
+
 	if (ddata->key_pinctrl) {
 		error = gpio_keys_pinctrl_configure(ddata, true);
 		if (error) {
@@ -933,9 +1018,24 @@ static int gpio_keys_resume(struct device *dev)
 	if (error)
 		return error;
 
-	//gpio_keys_report_state(ddata);
+	gpio_keys_report_state(ddata);
 	return 0;
 }
+
+#else
+
+static void gpio_keys_syscore_resume(void){}
+
+static int gpio_keys_suspend(struct device *dev)
+{
+	return 0;
+}
+
+static int gpio_keys_resume(struct device *dev)
+{
+	return 0;
+}
+
 #endif
 
 static SIMPLE_DEV_PM_OPS(gpio_keys_pm_ops, gpio_keys_suspend, gpio_keys_resume);

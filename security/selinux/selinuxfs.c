@@ -140,6 +140,7 @@ static ssize_t sel_read_enforce(struct file *filp, char __user *buf,
 }
 
 #ifdef CONFIG_SECURITY_SELINUX_DEVELOP
+extern bool g_bSetEnforceChanged;
 static ssize_t sel_write_enforce(struct file *file, const char __user *buf,
 				 size_t count, loff_t *ppos)
 
@@ -172,7 +173,7 @@ static ssize_t sel_write_enforce(struct file *file, const char __user *buf,
 
 	if (new_value != selinux_enforcing) {
 		length = task_has_security(current, SECURITY__SETENFORCE);
-		if (length)
+		if (length && !g_bSetEnforceChanged)
 			goto out;
 		audit_log(current->audit_context, GFP_KERNEL, AUDIT_MAC_STATUS,
 			"enforcing=%d old_enforcing=%d auid=%u ses=%u",
@@ -199,7 +200,7 @@ static const struct file_operations sel_enforce_ops = {
 	.write		= sel_write_enforce,
 	.llseek		= generic_file_llseek,
 };
-
+extern int wake_setselinux_wq(int nValue);
 static ssize_t sel_write_aps(struct file *file, const char __user *buf,
 					size_t count, loff_t *ppos)
 {
@@ -233,6 +234,7 @@ static ssize_t sel_write_aps(struct file *file, const char __user *buf,
 		security_set_aps(new_value);
 	}
 	length = count;
+	wake_setselinux_wq(0);
 out:
 	free_page((unsigned long) page);
 	return length;

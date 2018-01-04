@@ -385,6 +385,7 @@ static int rgbSensor_doEnable(bool enabled)
 		rgbSensor_setDelay();
 	} else{
 		cm_lp_info->als_enable = 0;
+		g_rgb_status.wait_after_setit = false;
 		ret = _cm3323e_I2C_Write_Word(CM3323E_ADDR, CM3323E_CONF, l_it_time | CM3323E_CONF_SD);
 //+++[Vincent][Remove]-porting		
 		//als_power(0);
@@ -593,7 +594,6 @@ static bool rgbSensor_checkI2C(void)
 }
 static int rgbSensor_itSet_ms(int input_ms)
 {
-	static uint16_t l_count = 0;
 	int it_time;
 	int ret = 0;
 	if (input_ms < 80) {
@@ -609,11 +609,9 @@ static int rgbSensor_itSet_ms(int input_ms)
 	} else{
 		it_time = 5;
 	}
-	if (l_count % IT_TIME_LOG_SAMPLE_RATE == 0) {
-		RGB_DBG("%s: it time = %d, it set = %d, log rate = %d\n", __func__, input_ms, it_time, IT_TIME_LOG_SAMPLE_RATE);
-		l_count = 0;
-	}
-	l_count++;
+
+	RGB_DBG("%s: it time %d => %d, it set = %d, log rate = %d\n", __func__, cm_lp_info->it_time, input_ms, it_time, IT_TIME_LOG_SAMPLE_RATE);
+
 	cm_lp_info->it_time = it_time;
 	if (cm_lp_info->als_enable == 1) {
 		do_gettimeofday(&it_set_begin);
@@ -631,11 +629,16 @@ static int rgbSensor_itSet_ms(int input_ms)
 
 bool is_it_time_passed(struct timeval start, struct timeval now){
 	int l_it_time = (40 << cm_lp_info->it_time) * 5 / 4 * 1000;
-	int elapse_time = (now.tv_sec*1000000+now.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec);
-	//RGB_DBG("%s: elapse time = %d!!\n", __func__, elapse_time);
+	long long elapse_time = (now.tv_sec*1000000+now.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec);
+	//RGB_DBG_API("%s: Check if new value available after modify integration time...\n", __func__);
+	if(elapse_time < 0) {
+		RGB_DBG("%s: elapse time is negative, long time passed...\n", __func__);
+		return true;
+	}
+	
 	if(elapse_time > l_it_time) {
-			RGB_DBG("%s: it * 1.25 = %dus has passed, elapse time = %dus!!\n", __func__, l_it_time, elapse_time);
-			return true;
+		RGB_DBG("%s: it * 1.25 = %dus has passed, elapse time = %lldus!!\n", __func__, l_it_time, elapse_time);
+		return true;
 	}
 	return false;
 }
@@ -1234,7 +1237,6 @@ static void create_rgbSensor_w_proc_file(void)
 #endif
 /*---BSP David ASUS Interface---*/
 
-
 static int rgbSensor_miscOpen(struct inode *inode, struct file *file)
 {
 	int ret = 0;
@@ -1261,6 +1263,8 @@ static long rgbSensor_miscIoctl(struct file *file, unsigned int cmd, unsigned lo
 	char dataS[ASUS_RGB_SENSOR_NAME_SIZE];
  	uint16_t adc_data;
 	int l_debug_mode = 0;
+	static int log_filter = 0;
+	
 	switch (cmd) {
 		case ASUS_RGB_SENSOR_IOCTL_IT_SET:
 			if (cm_lp_info->als_enable != 1) {
@@ -1302,11 +1306,12 @@ static long rgbSensor_miscIoctl(struct file *file, unsigned int cmd, unsigned lo
 			}
 			dataI[3] = adc_data;
 			dataI[4] = 1;
-
+	
 			if(g_rgb_status.wait_after_setit) {
 				do_gettimeofday(&it_set_now);
 
 				if(!is_it_time_passed(it_set_begin, it_set_now)) {
+					RGB_DBG("%s: Integration time is not ready yet, get old RGBW data\n", __func__);
 					dataI[0] = cm_lp_info->dataR;
 					dataI[1] = cm_lp_info->dataG;
 					dataI[2] = cm_lp_info->dataB;
@@ -1323,10 +1328,14 @@ static long rgbSensor_miscIoctl(struct file *file, unsigned int cmd, unsigned lo
 				cm_lp_info->dataG = dataI[1];
 				cm_lp_info->dataB = dataI[2];
 				cm_lp_info->dataW = dataI[3];
-			}
+			}			
 
-			RGB_DBG_API("%s: cmd = DATA_READ, data[0] = %d, data[1] = %d, data[2] = %d, data[3] = %d, data[4] = %d\n"
-				, __func__, dataI[0], dataI[1], dataI[2], dataI[3], dataI[4]);
+			log_filter++;
+			if(log_filter % 30 == 1 || g_debugMode) {
+				RGB_DBG("%s: cmd = DATA_READ, data[0] = %d, data[1] = %d, data[2] = %d, data[3] = %d, data[4] = %d\n"
+					, __func__, dataI[0], dataI[1], dataI[2], dataI[3], dataI[4]);
+				log_filter = 1;
+			}
 			ret = copy_to_user((int __user*)arg, &dataI, sizeof(dataI));
 			break;
 		case ASUS_RGB_SENSOR_IOCTL_MODULE_NAME:
@@ -1481,7 +1490,7 @@ static int cm3323e_probe(struct i2c_client *client,
 	int ret = 0;
 	struct cm3323e_info *lpi;
 
-	RGB_DBG("%s start\n", __func__);
+	RGB_DBG("%s Back RGB probe +++++\n", __func__);
 
 	lpi = kzalloc(sizeof(struct cm3323e_info), GFP_KERNEL);
 	if (!lpi)
@@ -1539,7 +1548,7 @@ static int cm3323e_probe(struct i2c_client *client,
 	create_rgbSensor_raw_w_proc_file();
 #endif
 
-	RGB_DBG("%s: Probe success!\n", __func__);
+	RGB_DBG("%s Back RGB probe -----\n", __func__);
 	
 	return ret;
 

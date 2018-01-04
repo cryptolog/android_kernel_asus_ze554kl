@@ -54,12 +54,12 @@ EXPORT_SYMBOL(poweron_alarm);
 module_param(poweron_alarm, bool, 0644);
 MODULE_PARM_DESC(poweron_alarm, "Enable/Disable power-on alarm");
 
-//[+++]Add the control feature for S-Current measurement
+//ASUS_BSP +++ Add the control feature for S-Current measurement
 bool rtc_wake_control;
 module_param(rtc_wake_control, bool, 0644);
 MODULE_PARM_DESC(rtc_wake_control, "Enable/Disable rtc-alrm wakeup");
+//ASUS_BSP --- Add the control feature for S-Current measurement
 
-//[---]Add the control feature for S-Current measurement
 /* rtc driver internal structure */
 struct qpnp_rtc {
 	u8			rtc_ctrl_reg;
@@ -689,7 +689,7 @@ fail_alarm_disable:
 	}
 }
 
-//[+++]Add the function to enable/disable qpnp_rtc wakeup ability
+//ASUS_BSP +++ Add the function to enable/disable qpnp_rtc wakeup ability
 static int qpnp_rtc_suspend(struct platform_device *pdev, pm_message_t pmesg)
 {
 	struct qpnp_rtc *rtc_dd = dev_get_drvdata(&pdev->dev);
@@ -709,7 +709,7 @@ static int qpnp_rtc_resume(struct platform_device *pdev)
 	enable_irq_wake(rtc_dd->rtc_alarm_irq);
 	return 0;
 }
-//[---]Add the function to enable/disable qpnp_rtc wakeup ability
+//ASUS_BSP --- Add the function to enable/disable qpnp_rtc wakeup ability
 
 static const struct of_device_id spmi_match_table[] = {
 	{
@@ -722,8 +722,10 @@ static struct platform_driver qpnp_rtc_driver = {
 	.probe		= qpnp_rtc_probe,
 	.remove		= qpnp_rtc_remove,
 	.shutdown	= qpnp_rtc_shutdown,
+//ASUS_BSP +++ 
 	.suspend 	= qpnp_rtc_suspend,
 	.resume		= qpnp_rtc_resume,
+//ASUS_BSP +---
 	.driver		= {
 		.name		= "qcom,qpnp-rtc",
 		.owner		= THIS_MODULE,

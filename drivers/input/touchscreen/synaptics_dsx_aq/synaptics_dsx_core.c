@@ -155,7 +155,6 @@ static int g_syna_touch_init_status = 0;
 static bool hall_sensor_detect_s = false;
 static bool key_already_down_s = false;
 static bool cover_enable_touch = false;
-
 extern bool proximity_check_status(void);
 extern int HALLsensor_gpio_value(void);
 
@@ -1372,8 +1371,8 @@ static ssize_t synaptics_rmi4_cover_mode_store(struct device *dev,
 		if(cover_mode == 0)
 		{
 			cover_enable_touch = false;
-		printk("[Touch] clear synaptics_rmi4_free_fingers\n");
-		synaptics_rmi4_free_fingers(rmi4_data);
+			printk("[Touch] clear synaptics_rmi4_free_fingers\n");
+			synaptics_rmi4_free_fingers(rmi4_data);
 		}
 		else
 		{
@@ -4659,9 +4658,11 @@ static int synaptics_rmi4_probe(struct platform_device *pdev)
 	const struct synaptics_dsx_hw_interface *hw_if;
 	const struct synaptics_dsx_board_data *bdata;
 	if (g_asus_lcdID == 2){
-		pr_err("[synaptic][touch] lcdid= %d  is focal touch \n",g_asus_lcdID);
+		printk("[synaptic][touch] lcdid= %d  is focal touch \n",g_asus_lcdID);
 		return 0;
 		}
+	
+	printk("[Synaptic][Touch] probe start!\n");
 	hw_if = pdev->dev.platform_data;
 	if (!hw_if) {
 		dev_err(&pdev->dev,
@@ -4843,7 +4844,7 @@ static int synaptics_rmi4_probe(struct platform_device *pdev)
 #endif
 
 	g_syna_touch_init_status = 1;
-
+	printk("[Synaptic][Touch] probe end!\n");
 
 	return retval;
 

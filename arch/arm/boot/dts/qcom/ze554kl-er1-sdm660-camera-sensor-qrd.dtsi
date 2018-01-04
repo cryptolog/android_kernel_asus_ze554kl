@@ -40,6 +40,16 @@
 		gpio = <&tlmm 50 0>;
 		vin-supply = <&pm660l_bob>;
 	};
+
+	cam_rear_dvdd_gpio_regulator: cam_rear_dvdd_fixed_regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "cam_rear_dvdd_gpio_regulator";
+		regulator-min-microvolt = <1350000>;
+		regulator-max-microvolt = <1350000>;
+		enable-active-high;
+		gpio = <&pm660l_gpios 4 0>;
+		vin-supply = <&pm660_s5>;
+	};
 };
 
 &tlmm {

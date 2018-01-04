@@ -9,11 +9,6 @@ config INPUT_CM3323E
 	depends on I2C
 	help
 	  Say Y here to enable the CM3323E RGB Color Sensor.
-config INPUT_OLIVIA
-	tristate "HEPTAGON Olivia laser sensor"
-	depends on I2C
-	help
-	  Say Y here to enable HEPTAGON Olivia Laser Sensor.
 config SYNAPTICS_SPIDRV
 	tristate "FingerPrint sensor"
 	depends on SPI_MASTER

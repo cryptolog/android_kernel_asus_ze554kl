@@ -123,6 +123,7 @@ unsigned int tune5;
 module_param(tune5, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(tune5, "QUSB PHY TUNE5");
 
+
 struct qusb_phy {
 	struct usb_phy		phy;
 	void __iomem		*base;
@@ -490,7 +491,6 @@ static int qusb_phy_init(struct usb_phy *phy)
 	printk("%s+++\n",__func__);
 
 	ret = qusb_phy_enable_power(qphy, true);
-
 	if (ret)
 		return ret;
 
@@ -564,16 +564,16 @@ static int qusb_phy_init(struct usb_phy *phy)
 		reset_val = readl_relaxed(qphy->base + QUSB2PHY_PLL_TEST);
 
 	// ASUS_BSP "Support using different set of PHY parameters for USB Host"
-	if(qphy->phy.flags & PHY_HOST_MODE){
+	if(qphy->phy.flags & PHY_HOST_MODE) {
 		printk("QUSB PHY init using host parameters\n");
 		if (qphy->qusb_phy_init_host_seq)
-		qusb_phy_write_seq(qphy->base, qphy->qusb_phy_init_host_seq,
-				qphy->init_seq_len, 0);
-	}else{
+			qusb_phy_write_seq(qphy->base, qphy->qusb_phy_init_host_seq,
+					qphy->init_seq_len, 0);
+	} else {
 		printk("QUSB PHY init using client parameters\n");
 		if (qphy->qusb_phy_init_seq)
-		qusb_phy_write_seq(qphy->base, qphy->qusb_phy_init_seq,
-				qphy->init_seq_len, 0);
+			qusb_phy_write_seq(qphy->base, qphy->qusb_phy_init_seq,
+					qphy->init_seq_len, 0);
 	}
 
 	/*
@@ -750,13 +750,15 @@ static int qusb_phy_set_suspend(struct usb_phy *phy, int suspend)
 			writel_relaxed(intr_mask,
 				qphy->base + QUSB2PHY_PORT_INTR_CTRL);
 
-			/* enable phy auto-resume */
-			writel_relaxed(0x0C,
+			if (linestate & (LINESTATE_DP | LINESTATE_DM)) {
+				/* enable phy auto-resume */
+				writel_relaxed(0x0C,
 					qphy->base + QUSB2PHY_PORT_TEST_CTRL);
-			/* flush the previous write before next write */
-			wmb();
-			writel_relaxed(0x04,
-				qphy->base + QUSB2PHY_PORT_TEST_CTRL);
+				/* flush the previous write before next write */
+				wmb();
+				writel_relaxed(0x04,
+					qphy->base + QUSB2PHY_PORT_TEST_CTRL);
+			}
 
 
 			dev_dbg(phy->dev, "%s: intr_mask = %x\n",
@@ -772,6 +774,9 @@ static int qusb_phy_set_suspend(struct usb_phy *phy, int suspend)
 			writel_relaxed(0x00,
 				qphy->base + QUSB2PHY_PORT_INTR_CTRL);
 
+			/* Disable PHY */
+			writel_relaxed(POWER_DOWN,
+				qphy->base + QUSB2PHY_PORT_POWERDOWN);
 			/* Make sure that above write is completed */
 			wmb();
 
@@ -1089,6 +1094,7 @@ static int qusb_phy_probe(struct platform_device *pdev)
 				dev_err(dev, "invalid init_seq_len\n");
 				return -EINVAL;
 			}
+
 			of_property_read_u32_array(dev->of_node,
 				"qcom,qusb-phy-init-device-seq",
 				qphy->qusb_phy_init_seq,
@@ -1099,6 +1105,7 @@ static int qusb_phy_probe(struct platform_device *pdev)
 	}
 
 	// ASUS_BSP "Support using different set of PHY parameters for USB Host"
+	size = 0;
 	of_get_property(dev->of_node, "qcom,qusb-phy-init-host-seq", &size);
 	if (size) {
 		qphy->qusb_phy_init_host_seq = devm_kzalloc(dev,
@@ -1110,6 +1117,7 @@ static int qusb_phy_probe(struct platform_device *pdev)
 				dev_err(dev, "invalid init_seq_len\n");
 				return -EINVAL;
 			}
+
 			of_property_read_u32_array(dev->of_node,
 				"qcom,qusb-phy-init-host-seq",
 				qphy->qusb_phy_init_host_seq,

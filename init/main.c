@@ -128,6 +128,7 @@ static char *initcall_command_line;
 static char *execute_command;
 static char *ramdisk_execute_command;
 
+
 //+++ ASUS_BSP : miniporting : Add for audio dbg mode
 int g_user_dbg_mode = 1;
 EXPORT_SYMBOL(g_user_dbg_mode);
@@ -162,6 +163,17 @@ static int set_ftm_mode(char *str)
 }
 __setup("androidboot.pre-ftm=", set_ftm_mode);
 //--- ASUS_BSP : miniporting : Add for audio dbg mode
+
+//+++ ASUS_BSP : set recovery cmdline
+bool g_recovery_mode = false;
+static int set_recovery_mode(char *str)
+{
+	g_recovery_mode = true;
+	printk("Recovery mode = %d\n",g_recovery_mode);
+	return 0;
+}
+__setup("recovery", set_recovery_mode);
+//---ASUS_BSP : set recovery cmdline
 
 //ASUS_BSP Austin_T : add for kernel charger mode +++
 bool g_Charger_mode = false;
@@ -244,6 +256,24 @@ static int get_lcd_uniqueId(char *str)
 __setup("LCD=", get_lcd_uniqueId);
 
 //+++ ASUS_BSP : miniporting
+
+// ASUS_BSP +++ Jiunhau_Wang [ZE554KL][DM][NA][NA] get permissive status
+int permissive_enable = 0;
+EXPORT_SYMBOL(permissive_enable);
+static int get_permissive_status(char *str)
+{
+	
+	if( strcmp("permissive", str) == 0 )
+	{
+		permissive_enable = 1;
+		printk("permissive = %d\n", permissive_enable);
+	}
+
+	return 0;
+}
+__setup("androidboot.selinux=", get_permissive_status);
+// ASUS_BSP --- Jiunhau_Wang [ZE554KL][DM][NA][NA] get permissive status
+
 enum DEVICE_HWID g_ASUS_hwID=ZE554KL_UNKNOWN;
 
 EXPORT_SYMBOL(g_ASUS_hwID);

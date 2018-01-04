@@ -157,7 +157,7 @@
 / {
 	model = "Qualcomm Technologies, Inc. SDA 660 PM660 + PM660A QRD HDK660";
 	compatible = "qcom,sda660-qrd", "qcom,sda660", "qcom,qrd";
-	qcom,board-id = <0x0006000b 0>;
+	qcom,board-id = <0x0016000b 0>;
 	qcom,pmic-id = <0x0001001b 0x0001011a 0x0 0x0>;
 };
 
@@ -168,6 +168,15 @@
 
 &mdss_mdp {
 	qcom,mdss-pref-prim-intf = "dsi";
+};
+
+&mdss_dp_ctrl {
+	pinctrl-names = "mdss_dp_active", "mdss_dp_sleep";
+	pinctrl-0 = <&mdss_dp_aux_active &mdss_dp_usbplug_cc_active>;
+	pinctrl-1 = <&mdss_dp_aux_suspend &mdss_dp_usbplug_cc_suspend>;
+	qcom,aux-en-gpio = <&tlmm 55 0>;
+	qcom,aux-sel-gpio = <&tlmm 56 0>;
+	qcom,usbplug-cc-gpio = <&tlmm 58 0>;
 };
 
 &mdss_dsi {
@@ -190,4 +199,42 @@
 	qcom,mdss-dsi-bl-min-level = <1>;
 	qcom,mdss-dsi-bl-max-level = <255>;
 	qcom,panel-supply-entries = <&dsi_panel_pwr_supply_labibb_amoled>;
+};
+
+&tasha_snd {
+	qcom,audio-routing =
+		"AIF4 VI", "MCLK",
+		"RX_BIAS", "MCLK",
+		"MADINPUT", "MCLK",
+		"AMIC2", "MIC BIAS2",
+		"MIC BIAS2", "Headset Mic",
+		"DMIC0", "MIC BIAS1",
+		"MIC BIAS1", "Digital Mic0",
+		"DMIC3", "MIC BIAS3",
+		"MIC BIAS3", "Digital Mic3",
+		"DMIC5", "MIC BIAS4",
+		"MIC BIAS4", "Digital Mic5",
+		"SpkrLeft IN", "SPK1 OUT";
+	qcom,msm-mbhc-hphl-swh = <0>;
+};
+
+&usb2s {
+	status = "okay";
+};
+
+&qusb_phy0 {
+	reg = <0x0c012000 0x180>,
+		<0x00188018 0x4>;
+	reg-names = "qusb_phy_base",
+		"ref_clk_addr";
+	qcom,qusb-phy-init-seq = <0xf8 0x80
+				0xb3 0x84
+				0x83 0x88
+				0xc7 0x8c
+				0x30 0x08
+				0x79 0x0c
+				0x21 0x10
+				0x14 0x9c
+				0x9f 0x1c
+				0x00 0x18>;
 };

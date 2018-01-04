@@ -579,9 +579,9 @@ static int __mdss_mdp_validate_qseed3_cfg(struct mdss_mdp_pipe *pipe)
 
 		vert_fetch_pixels = DECIMATED_DIMENSION(src_h +
 				(int8_t)(pipe->scaler.top_ftch[plane]
-					& 0xFF) +
+					& 0xFF)+
 				(int8_t)(pipe->scaler.btm_ftch[plane]
-				& 0xFF),
+					& 0xFF),
 			pipe->vert_deci);
 
 		if ((hor_req_pixels != hor_fetch_pixels) ||
@@ -954,13 +954,6 @@ int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 		pipe->dst.x += mixer->ctl->border_x_off;
 		pipe->dst.y += mixer->ctl->border_y_off;
 	}
-
-	if (mfd->panel_orientation & MDP_FLIP_LR)
-		pipe->dst.x = pipe->mixer_left->width
-			- pipe->dst.x - pipe->dst.w;
-	if (mfd->panel_orientation & MDP_FLIP_UD)
-		pipe->dst.y = pipe->mixer_left->height
-			- pipe->dst.y - pipe->dst.h;
 
 	pipe->horz_deci = req->horz_deci;
 	pipe->vert_deci = req->vert_deci;
@@ -2327,6 +2320,31 @@ set_roi:
 }
 
 /*
+ * For the pipe which is being used for Secure Display,
+ * cleanup the previously queued buffers.
+ */
+static void __overlay_cleanup_secure_pipe(struct msm_fb_data_type *mfd)
+{
+	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(mfd);
+	struct mdss_mdp_pipe *pipe;
+	struct mdss_mdp_data *buf, *tmpbuf;
+
+	list_for_each_entry(pipe, &mdp5_data->pipes_used, list) {
+		if (pipe->flags & MDP_SECURE_DISPLAY_OVERLAY_SESSION) {
+			list_for_each_entry_safe(buf, tmpbuf, &pipe->buf_queue,
+							pipe_list) {
+				if (buf->state == MDP_BUF_STATE_ACTIVE) {
+					__pipe_buf_mark_cleanup(mfd, buf);
+					list_move(&buf->buf_list,
+						&mdp5_data->bufs_freelist);
+					mdss_mdp_overlay_buf_free(mfd, buf);
+				}
+			}
+		}
+	}
+}
+
+/*
  * Check if there is any change in secure state and store it.
  */
 static void __overlay_set_secure_transition_state(struct msm_fb_data_type *mfd)
@@ -2402,9 +2420,19 @@ static int __overlay_secure_ctrl(struct msm_fb_data_type *mfd)
 	if (mdp5_data->secure_transition_state == SD_NON_SECURE_TO_SECURE) {
 		if (!mdss_get_sd_client_cnt()) {
 			MDSS_XLOG(0x11);
-			/*wait for ping pong done */
-			if (ctl->ops.wait_pingpong)
+			/* wait for ping pong done */
+			if (ctl->ops.wait_pingpong) {
 				mdss_mdp_display_wait4pingpong(ctl, true);
+
+				/*
+				 * For command mode panels, there will not be
+				 * a NULL commit preceding secure display. If
+				 * a pipe is reused for secure display,
+				 * cleanup buffers in the secure pipe before
+				 * detaching IOMMU.
+				 */
+				__overlay_cleanup_secure_pipe(mfd);
+			}
 			/*
 			 * unmap the previous commit buffers before
 			 * transitioning to secure state
@@ -2968,6 +2996,16 @@ static int mdss_mdp_overlay_get_fb_pipe(struct msm_fb_data_type *mfd,
 				req->src_rect = right_rect;
 		}
 
+		if (mfd->panel_orientation == MDP_ROT_180) {
+			if (mixer_mux == MDSS_MDP_MIXER_MUX_RIGHT) {
+				req->src_rect.x = 0;
+				req->dst_rect.x = mixer->width;
+			} else {
+				req->src_rect.x = (split_lm) ? mixer->width : 0;
+				req->dst_rect.x = 0;
+			}
+		}
+
 		req->z_order = MDSS_MDP_STAGE_BASE;
 		if (rotate_180)
 			req->flags |= (MDP_FLIP_LR | MDP_FLIP_UD);
@@ -3507,7 +3545,8 @@ static ssize_t dynamic_fps_sysfs_wta_dfps(struct device *dev,
 	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(mfd);
 	struct dynamic_fps_data data = {0};
 
-	if (!mdp5_data->ctl || !mdss_mdp_ctl_is_power_on(mdp5_data->ctl)) {
+	if (!mdp5_data->ctl || !mdss_mdp_ctl_is_power_on(mdp5_data->ctl) ||
+			mdss_panel_is_power_off(mfd->panel_power_state)) {
 		pr_debug("panel is off\n");
 		return count;
 	}
@@ -4417,7 +4456,7 @@ static int mdss_mdp_hw_cursor_pipe_update(struct msm_fb_data_type *mfd,
 	if (!mfd->cursor_buf && (cursor->set & FB_CUR_SETIMAGE)) {
 		ret = mdss_smmu_dma_alloc_coherent(&pdev->dev,
 			cursor_frame_size, (dma_addr_t *) &mfd->cursor_buf_phys,
-			&mfd->cursor_buf_iova, mfd->cursor_buf,
+			&mfd->cursor_buf_iova, &mfd->cursor_buf,
 			GFP_KERNEL, MDSS_IOMMU_DOMAIN_UNSECURE);
 		if (ret) {
 			pr_err("can't allocate cursor buffer rc:%d\n", ret);
@@ -4605,7 +4644,7 @@ static int mdss_mdp_hw_cursor_update(struct msm_fb_data_type *mfd,
 	if (!mfd->cursor_buf && (cursor->set & FB_CUR_SETIMAGE)) {
 		ret = mdss_smmu_dma_alloc_coherent(&pdev->dev,
 			cursor_frame_size, (dma_addr_t *) &mfd->cursor_buf_phys,
-			&mfd->cursor_buf_iova, mfd->cursor_buf,
+			&mfd->cursor_buf_iova, &mfd->cursor_buf,
 			GFP_KERNEL, MDSS_IOMMU_DOMAIN_UNSECURE);
 		if (ret) {
 			pr_err("can't allocate cursor buffer rc:%d\n", ret);
@@ -4653,7 +4692,7 @@ static int mdss_mdp_hw_cursor_update(struct msm_fb_data_type *mfd,
 
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON);
 
-	if (cursor->set & FB_CUR_SETIMAGE) {
+	if (mfd->cursor_buf && (cursor->set & FB_CUR_SETIMAGE)) {
 		u32 cursor_addr;
 		ret = copy_from_user(mfd->cursor_buf, img->data,
 				     img->width * img->height * 4);
@@ -4814,7 +4853,7 @@ static int mdss_mdp_pp_ioctl(struct msm_fb_data_type *mfd,
 						&mdp_pp.data.bl_scale_data);
 		break;
 	case mdp_op_ad_cfg:
-		pr_err("%s mdp_op_ad_config \n",__func__);
+		pr_info("%s mdp_op_ad_config \n",__func__);
 		ret = mdss_mdp_ad_config(mfd, &mdp_pp.data.ad_init_cfg);
 		copyback = 1;
 		break;
@@ -4822,7 +4861,7 @@ static int mdss_mdp_pp_ioctl(struct msm_fb_data_type *mfd,
 		ret = mdss_mdp_ad_bl_config(mfd, &mdp_pp.data.ad_bl_cfg);
 		break;
 	case mdp_op_ad_input:
-		pr_err("%s mdp_op_ad_input \n",__func__);
+		pr_info("%s mdp_op_ad_input \n",__func__);
 		ret = mdss_mdp_ad_input(mfd, &mdp_pp.data.ad_input, 1);
 		if (ret > 0) {
 			ret = 0;
@@ -4994,10 +5033,11 @@ static int mdss_fb_get_metadata(struct msm_fb_data_type *mfd,
 		ret = mdss_fb_get_hw_caps(mfd, &metadata->data.caps);
 		break;
 	case metadata_op_get_ion_fd:
-		if (mfd->fb_ion_handle) {
+		if (mfd->fb_ion_handle && mfd->fb_ion_client) {
 			get_dma_buf(mfd->fbmem_buf);
 			metadata->data.fbmem_ionfd =
-				dma_buf_fd(mfd->fbmem_buf, 0);
+				ion_share_dma_buf_fd(mfd->fb_ion_client,
+					mfd->fb_ion_handle);
 			if (metadata->data.fbmem_ionfd < 0) {
 				dma_buf_put(mfd->fbmem_buf);
 				pr_err("fd allocation failed. fd = %d\n",

@@ -20,7 +20,9 @@
 
 DEFINE_MUTEX(pm_mutex);
 
+//ASUS_BSP +++
 extern bool rtc_wake_control; /* /kernel/msm-4.4/drivers/rtc/qpnp-rtc.c ,default is N */
+//ASUS_BSP ---
 
 #ifdef CONFIG_PM_SLEEP
 
@@ -40,11 +42,18 @@ int unregister_pm_notifier(struct notifier_block *nb)
 }
 EXPORT_SYMBOL_GPL(unregister_pm_notifier);
 
-int pm_notifier_call_chain(unsigned long val)
+int __pm_notifier_call_chain(unsigned long val, int nr_to_call, int *nr_calls)
 {
-	int ret = blocking_notifier_call_chain(&pm_chain_head, val, NULL);
+	int ret;
+
+	ret = __blocking_notifier_call_chain(&pm_chain_head, val, NULL,
+						nr_to_call, nr_calls);
 
 	return notifier_to_errno(ret);
+}
+int pm_notifier_call_chain(unsigned long val)
+{
+	return __pm_notifier_call_chain(val, -1, NULL);
 }
 
 /* If set, devices may be suspended and resumed asynchronously. */
@@ -282,13 +291,7 @@ static ssize_t pm_wakeup_irq_show(struct kobject *kobj,
 	return pm_wakeup_irq ? sprintf(buf, "%u\n", pm_wakeup_irq) : -ENODATA;
 }
 
-static ssize_t pm_wakeup_irq_store(struct kobject *kobj,
-					struct kobj_attribute *attr,
-					const char *buf, size_t n)
-{
-	return -EINVAL;
-}
-power_attr(pm_wakeup_irq);
+power_attr_ro(pm_wakeup_irq);
 
 #else /* !CONFIG_PM_SLEEP_DEBUG */
 static inline void pm_print_times_init(void) {}
@@ -353,16 +356,17 @@ static suspend_state_t decode_state(const char *buf, size_t n)
 	return PM_SUSPEND_ON;
 }
 
+//ASUS_BSP +++
 /*Add a timer to trigger wakelock debug*/
 extern struct timer_list unattended_timer; /* unattended_timer_expired() kernel/kernel/power/suspend.c*/
 /* PM_UNATTENDED_TIMEOUT   <-power.h <-suspend.h */
+//ASUS_BSP ---
 static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
 			   const char *buf, size_t n)
 {
 	suspend_state_t state;
 	int error;
 
-	//printk("[PM] ++state_store(): state is %s\n", buf);
 	error = pm_autosleep_lock();
 	if (error)
 		return error;
@@ -374,6 +378,7 @@ static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
 
 	state = decode_state(buf, n);
 
+//ASUS_BSP +++
 	if (state < PM_SUSPEND_MAX) {
 		printk("[PM] decode_state() and call pm_suspend(state=%d)\n", state);
 		if (state == PM_SUSPEND_ON) {
@@ -392,16 +397,16 @@ static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
 	} else{
 		error = -EINVAL;
 	}
+//ASUS_BSP ---
 
  out:
 	pm_autosleep_unlock();
-	//printk("[PM] --state_store: state is %s\n", buf);
 	return error ? error : n;
 }
 
 power_attr(state);
 
-/*[+++] Add unattended_timer power_attr to trigger unattended timer */
+//ASUS_BSP +++ Add unattended_timer power_attr to trigger unattended timer
 static ssize_t unattended_timer_show(struct kobject *kobj, struct kobj_attribute *attr,
 			  char *buf)
 {
@@ -431,7 +436,8 @@ static ssize_t unattended_timer_store(struct kobject *kobj, struct kobj_attribut
 }
 
 power_attr(unattended_timer);
-/*[---] Add unattended_timer power_attr to trigger unattended timer */
+//ASUS_BSP --- Add unattended_timer power_attr to trigger unattended timer
+
 #ifdef CONFIG_PM_SLEEP
 /*
  * The 'wakeup_count' attribute, along with the functions defined in
@@ -531,7 +537,7 @@ static ssize_t autosleep_store(struct kobject *kobj,
 	suspend_state_t state = decode_state(buf, n);
 	int error;
 
-	printk("[PM] autosleep_store(): %s\n", buf);
+	printk("[PM] autosleep_store(): %s\n", buf); //ASUS_BSP +
 	if (state == PM_SUSPEND_ON
 	    && strcmp(buf, "off") && strcmp(buf, "off\n"))
 		return -EINVAL;
@@ -555,10 +561,12 @@ static ssize_t wake_lock_store(struct kobject *kobj,
 			       struct kobj_attribute *attr,
 			       const char *buf, size_t n)
 {
+//ASUS_BSP +++
 	int error = 0;
 	if (!rtc_wake_control) {
 		error = pm_wake_lock(buf);
 	}
+//ASUS_BSP ---
 	return error ? error : n;
 }
 
@@ -619,14 +627,7 @@ static ssize_t pm_trace_dev_match_show(struct kobject *kobj,
 	return show_trace_dev_match(buf, PAGE_SIZE);
 }
 
-static ssize_t
-pm_trace_dev_match_store(struct kobject *kobj, struct kobj_attribute *attr,
-			 const char *buf, size_t n)
-{
-	return -EINVAL;
-}
-
-power_attr(pm_trace_dev_match);
+power_attr_ro(pm_trace_dev_match);
 
 #endif /* CONFIG_PM_TRACE */
 

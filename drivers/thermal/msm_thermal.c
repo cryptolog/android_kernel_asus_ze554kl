@@ -203,6 +203,7 @@ static bool cluster_info_probed;
 static bool cluster_info_nodes_called;
 static bool in_suspend, retry_in_progress;
 static bool lmh_dcvs_available;
+static bool lmh_dcvs_is_supported;
 static int *tsens_id_map;
 static int *zone_id_tsens_map;
 static DEFINE_MUTEX(vdd_rstr_mutex);
@@ -2907,7 +2908,7 @@ static void msm_thermal_bite(int zone_id, int temp)
 			tsens_id, temp);
 	}
 	/* If it is a secure device ignore triggering the thermal bite. */
-	if (scm_is_secure_device())
+	if (!scm_is_secure_device())
 		return;
 	if (!is_scm_armv8()) {
 		scm_call_atomic1(SCM_SVC_BOOT, THERM_SECURE_BITE_CMD, 0);
@@ -5442,7 +5443,7 @@ int msm_thermal_init(struct msm_thermal_data *pdata)
 	if (ret)
 		pr_err("cannot register cpufreq notifier. err:%d\n", ret);
 
-	if (!lmh_dcvs_available) {
+	if (!lmh_dcvs_is_supported) {
 		register_reboot_notifier(&msm_thermal_reboot_notifier);
 		pm_notifier(msm_thermal_suspend_callback, 0);
 	}
@@ -7472,11 +7473,12 @@ static int msm_thermal_dev_probe(struct platform_device *pdev)
 		pr_err("thermal pre init failed. err:%d\n", ret);
 		goto probe_exit;
 	}
+	probe_sensor_info(node, &data, pdev);
 	ret = probe_deferrable_properties(node, &data, pdev);
 	if (ret)
 		goto probe_exit;
 
-	probe_sensor_info(node, &data, pdev);
+	lmh_dcvs_is_supported = of_property_read_bool(node, "clock-names");
 	probe_cc(node, &data, pdev);
 	probe_freq_mitigation(node, &data, pdev);
 	probe_cx_phase_ctrl(node, &data, pdev);
@@ -7495,7 +7497,7 @@ static int msm_thermal_dev_probe(struct platform_device *pdev)
 	if (ret)
 		goto probe_exit;
 	msm_thermal_probed = true;
-
+	
 	/* ASUS_BSP (ShowCai) +++ */
 	if (interrupt_mode_enable) {
 		interrupt_mode_init();

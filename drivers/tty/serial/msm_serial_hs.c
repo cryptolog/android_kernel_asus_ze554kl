@@ -272,7 +272,7 @@ static struct of_device_id msm_hs_match_table[] = {
 #define UARTDM_TX_BUF_SIZE UART_XMIT_SIZE
 #define UARTDM_RX_BUF_SIZE 512
 #define RETRY_TIMEOUT 5
-#define UARTDM_NR 256
+#define UARTDM_NR 4
 #define BAM_PIPE_MIN 0
 #define BAM_PIPE_MAX 11
 #define BUS_SCALING 1
@@ -2255,7 +2255,7 @@ void disable_wakeup_interrupt(struct msm_hs_port *msm_uport)
 		return;
 
 	if (msm_uport->wakeup.enabled) {
-		disable_irq_nosync(msm_uport->wakeup.irq);
+		disable_irq(msm_uport->wakeup.irq);
 		enable_irq(uport->irq);
 		spin_lock_irqsave(&uport->lock, flags);
 		msm_uport->wakeup.enabled = false;
@@ -2614,8 +2614,7 @@ static int msm_hs_startup(struct uart_port *uport)
 	msm_hs_resource_vote(msm_uport);
 
 	if (is_use_low_power_wakeup(msm_uport)) {
-		ret = request_threaded_irq(msm_uport->wakeup.irq, NULL,
-					msm_hs_wakeup_isr,
+		ret = request_irq(msm_uport->wakeup.irq, msm_hs_wakeup_isr,
 					IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
 					"msm_hs_wakeup", msm_uport);
 		if (unlikely(ret)) {
@@ -3155,6 +3154,11 @@ static void msm_hs_pm_suspend(struct device *dev)
 	mutex_lock(&msm_uport->mtx);
 
 	client_count = atomic_read(&msm_uport->client_count);
+	msm_uport->pm_state = MSM_HS_PM_SUSPENDED;
+	msm_hs_resource_off(msm_uport);
+	obs_manage_irq(msm_uport, false);
+	msm_hs_clk_bus_unvote(msm_uport);
+
 	/* For OBS, don't use wakeup interrupt, set gpio to suspended state */
 	if (msm_uport->obs) {
 		ret = pinctrl_select_state(msm_uport->pinctrl,
@@ -3164,10 +3168,6 @@ static void msm_hs_pm_suspend(struct device *dev)
 				__func__);
 	}
 
-	msm_uport->pm_state = MSM_HS_PM_SUSPENDED;
-	msm_hs_resource_off(msm_uport);
-	obs_manage_irq(msm_uport, false);
-	msm_hs_clk_bus_unvote(msm_uport);
 	if (!atomic_read(&msm_uport->client_req_state))
 		enable_wakeup_interrupt(msm_uport);
 	LOG_USR_MSG(msm_uport->ipc_msm_hs_pwr_ctxt,
@@ -3198,6 +3198,16 @@ static int msm_hs_pm_resume(struct device *dev)
 		goto exit_pm_resume;
 	if (!atomic_read(&msm_uport->client_req_state))
 		disable_wakeup_interrupt(msm_uport);
+
+	/* For OBS, don't use wakeup interrupt, set gpio to active state */
+	if (msm_uport->obs) {
+		ret = pinctrl_select_state(msm_uport->pinctrl,
+				msm_uport->gpio_state_active);
+		if (ret)
+			MSM_HS_ERR("%s():Error selecting active state",
+				 __func__);
+	}
+
 	ret = msm_hs_clk_bus_vote(msm_uport);
 	if (ret) {
 		MSM_HS_ERR("%s:Failed clock vote %d\n", __func__, ret);
@@ -3207,15 +3217,6 @@ static int msm_hs_pm_resume(struct device *dev)
 	obs_manage_irq(msm_uport, true);
 	msm_uport->pm_state = MSM_HS_PM_ACTIVE;
 	msm_hs_resource_on(msm_uport);
-
-	/* For OBS, don't use wakeup interrupt, set gpio to active state */
-	if (msm_uport->obs) {
-		ret = pinctrl_select_state(msm_uport->pinctrl,
-			msm_uport->gpio_state_active);
-		if (ret)
-			MSM_HS_ERR("%s():Error selecting active state",
-				__func__);
-	}
 
 	LOG_USR_MSG(msm_uport->ipc_msm_hs_pwr_ctxt,
 		"%s:PM State:Active client_count %d\n", __func__, client_count);

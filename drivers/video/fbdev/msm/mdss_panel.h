@@ -842,7 +842,6 @@ struct mdss_panel_info {
 
 	u32 cont_splash_enabled;
 	bool esd_rdy;
-	bool esd_crash;
 	u32 partial_update_supported; /* value from dts if pu is supported */
 	u32 partial_update_enabled; /* is pu currently allowed */
 	u32 dcs_cmd_by_left;

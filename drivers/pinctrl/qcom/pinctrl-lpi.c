@@ -414,8 +414,10 @@ static int lpi_notifier_service_cb(struct notifier_block *this,
 
 	switch (opcode) {
 	case AUDIO_NOTIFIER_SERVICE_DOWN:
-		if (initial_boot)
+		if (initial_boot) {
+			initial_boot = false;
 			break;
+		}
 		lpi_dev_up = false;
 		break;
 	case AUDIO_NOTIFIER_SERVICE_UP:
@@ -487,13 +489,7 @@ static void lpi_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 	unsigned gpio = chip->base;
 	unsigned i;
 
-	struct pinctrl_dev *pctrl = to_gpio_state(chip)->ctrl;
-         struct pin_desc *desc;
-
 	for (i = 0; i < chip->ngpio; i++, gpio++) {
-		desc = pin_desc_get(pctrl, i);
-                  if (!desc->mux_owner)
-                          continue;
 		lpi_gpio_dbg_show_one(s, NULL, chip, i, gpio);
 		seq_puts(s, "\n");
 	}

@@ -46,7 +46,7 @@
 			05 01 00 00 78 00 02 11 00
 			05 01 00 00 78 00 02 29 00];
 		qcom,mdss-dsi-off-command = [05 01 00 00 32 00 02 28 00
-					05 01 00 00 78 00 02 10 00];
+			05 01 00 00 78 00 02 10 00];
 		qcom,mdss-dsi-on-command-state = "dsi_lp_mode";
 		qcom,mdss-dsi-off-command-state = "dsi_hs_mode";
 		qcom,mdss-dsi-h-sync-pulse = <1>;
@@ -60,6 +60,11 @@
 		qcom,mdss-dsi-lane-3-state;
 		qcom,mdss-dsi-lp11-init;
 		qcom,mdss-dsi-panel-timings = [D6 32 22 00 60 66  26 36 28 03 04 00];
+		qcom,mdss-dsi-panel-timings-phy-v2 = [31 2a 11 14 0d 03 04 a0
+			31 2a 11 14 0d 03 04 a0
+			31 2a 11 14 0d 03 04 a0
+			31 2a 11 14 0d 03 04 a0
+			31 3e 11 14 0d 03 04 a0];
 		qcom,mdss-dsi-t-clk-post = <0x03>;
 		qcom,mdss-dsi-t-clk-pre = <0x28>;
 		qcom,mdss-dsi-bl-min-level = <1>;

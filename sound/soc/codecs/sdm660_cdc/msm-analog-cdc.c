@@ -2071,6 +2071,9 @@ static const char * const rdac2_mux_text[] = {
 	"ZERO", "RX2", "RX1"
 };
 
+static const struct snd_kcontrol_new adc1_switch =
+	SOC_DAPM_SINGLE("Switch", SND_SOC_NOPM, 0, 1, 0);
+
 static const struct soc_enum rdac2_mux_enum =
 	SOC_ENUM_SINGLE(MSM89XX_PMIC_DIGITAL_CDC_CONN_HPHR_DAC_CTL,
 		0, 3, rdac2_mux_text);
@@ -3108,7 +3111,8 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"ADC2 MUX", "INP2", "ADC2_INP2"},
 	{"ADC2 MUX", "INP3", "ADC2_INP3"},
 
-	{"ADC1", NULL, "AMIC1"},
+	{"ADC1", NULL, "ADC1_INP1"},
+	{"ADC1_INP1", "Switch", "AMIC1"},
 	{"ADC2_INP2", NULL, "AMIC2"},
 	{"ADC2_INP3", NULL, "AMIC3"},
 
@@ -3449,6 +3453,8 @@ static const struct snd_soc_dapm_widget msm_anlg_cdc_dapm_widgets[] = {
 
 	SND_SOC_DAPM_SPK("Ext Spk", msm_anlg_cdc_codec_enable_spk_ext_pa),
 
+	SND_SOC_DAPM_SWITCH("ADC1_INP1", SND_SOC_NOPM, 0, 0,
+			    &adc1_switch),
 	SND_SOC_DAPM_SUPPLY("RX1 CLK", MSM89XX_PMIC_DIGITAL_CDC_DIG_CLK_CTL,
 			    0, 0, NULL, 0),
 	SND_SOC_DAPM_SUPPLY("RX2 CLK", MSM89XX_PMIC_DIGITAL_CDC_DIG_CLK_CTL,
@@ -3873,8 +3879,10 @@ static int sdm660_cdc_notifier_service_cb(struct notifier_block *nb,
 
 	switch (opcode) {
 	case AUDIO_NOTIFIER_SERVICE_DOWN:
-		if (initial_boot)
+		if (initial_boot) {
+			initial_boot = false;
 			break;
+		}
 		dev_dbg(codec->dev,
 			"ADSP is about to power down. teardown/reset codec\n");
 		msm_anlg_cdc_device_down(codec);
@@ -4400,20 +4408,20 @@ static int msm_anlg_cdc_soc_probe(struct snd_soc_codec *codec)
 
 	/* Set initial cap mode */
 	msm_anlg_cdc_configure_cap(codec, false, false);
-    
+
 	/* ASUS_BSP Paul +++ */
-    registered_codec = codec;
+	registered_codec = codec;
 	g_sdm660_cdc_priv = sdm660_cdc;
 
 	ret = gpio_request(AUDIO_DEBUG_GPIO, "AUDIO_DEBUG");
 	if (ret)
 		printk("%s: Failed to request gpio AUDIO_DEBUG %d\n", __func__, AUDIO_DEBUG_GPIO);
-	else
-	{
+	else {
 		gpio_direction_output(AUDIO_DEBUG_GPIO, 1); /* disable uart log, enable audio */
 		g_DebugMode = 0;
 		wcd_mbhc_plug_detect_for_debug_mode(&g_sdm660_cdc_priv->mbhc, 0);
 	}
+
 	/* ASUS_BSP Paul +++ */
         if (!g_audiowizard_force_preset_sdev) {
 		g_audiowizard_force_preset_sdev = kzalloc(sizeof(struct switch_dev), GFP_KERNEL);
@@ -4432,8 +4440,7 @@ static int msm_anlg_cdc_soc_probe(struct snd_soc_codec *codec)
 	create_audio_debug_proc_file();
 	create_codec_status_proc_file();
 #endif
-	/* ASUS_BSP Paul --- */    
-    
+	/* ASUS_BSP Paul --- */
 
 	snd_soc_dapm_ignore_suspend(dapm, "PDM Playback");
 	snd_soc_dapm_ignore_suspend(dapm, "PDM Capture");

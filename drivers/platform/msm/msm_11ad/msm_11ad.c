@@ -1098,7 +1098,7 @@ static int msm_11ad_probe(struct platform_device *pdev)
 	}
 	ctx->use_smmu = of_property_read_bool(of_node, "qcom,smmu-support");
 	ctx->keep_radio_on_during_sleep = of_property_read_bool(of_node,
-		"qcom,keep_radio_on_during_sleep");
+		"qcom,keep-radio-on-during-sleep");
 	ctx->bus_scale = msm_bus_cl_get_pdata(pdev);
 
 	ctx->smmu_s1_en = of_property_read_bool(of_node, "qcom,smmu-s1-en");
@@ -1482,7 +1482,7 @@ static int ops_notify(void *handle, enum wil_platform_event evt)
 	return rc;
 }
 
-bool ops_keep_radio_on_during_sleep(void *handle)
+static bool ops_keep_radio_on_during_sleep(void *handle)
 {
 	struct msm11ad_ctx *ctx = (struct msm11ad_ctx *)handle;
 

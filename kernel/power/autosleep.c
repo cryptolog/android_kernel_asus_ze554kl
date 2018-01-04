@@ -10,19 +10,19 @@
 #include <linux/mutex.h>
 #include <linux/pm_wakeup.h>
 
-#include <linux/kernel.h>
-//[+++]Debug for active wakelock before entering suspend
+#include <linux/kernel.h> //ASUS_BSP +
+//ASUS_BSP +++ Debug for active wakelock before entering suspend
 #include <linux/switch.h>
 #include <linux/workqueue.h>
 #include <linux/module.h>
-//[---]Debug for active wakelock before entering suspend
+//ASUS_BSP --- Debug for active wakelock before entering suspend
 
 #include "power.h"
 
 static suspend_state_t autosleep_state;
 static struct workqueue_struct *autosleep_wq;
 
-//[+++]Debug for active wakelock before entering suspend
+//ASUS_BSP +++ Debug for active wakelock before entering suspend
 static struct switch_dev pmsp_dev;
 struct work_struct pms_printer;
 
@@ -31,7 +31,7 @@ struct work_struct pm_cpuinfo_printer;
 
 void pmsp_print(void);
 extern bool g_resume_status;
-//[---]Debug for active wakelock before entering suspend
+//ASUS_BSP +++ Debug for active wakelock before entering suspend
 
 /*
  * Note: it is only safe to mutex_lock(&autosleep_lock) if a wakeup_source
@@ -105,7 +105,9 @@ void pm_autosleep_unlock(void)
 	mutex_unlock(&autosleep_lock);
 }
 
+//ASUS_BSP +++
 extern struct timer_list unattended_timer;//Debug for active wakelock before entering suspend
+//ASUS_BSP ---
 int pm_autosleep_set_state(suspend_state_t state)
 {
 
@@ -125,21 +127,21 @@ int pm_autosleep_set_state(suspend_state_t state)
 	if (state > PM_SUSPEND_ON) {
 		pm_wakep_autosleep_enabled(true);
 		
-/*[+++]Debug for active wakelock before entering suspend */
+//ASUS_BSP +++ Debug for active wakelock before entering suspend
 		g_resume_status = false; //in sleep mode
 		printk("[PM]unattended_timer: mod_timer (due to auto_sleep)\n");
 		g_unattended_timeout = PM_UNATTENDED_TIMEOUT_START;
 		mod_timer(&unattended_timer, jiffies + msecs_to_jiffies(g_unattended_timeout));
-/*[---]Debug for active wakelock before entering suspend */
+//ASUS_BSP --- Debug for active wakelock before entering suspend
 
 		queue_up_suspend_work();
 	} else {
 		pm_wakep_autosleep_enabled(false);
 
-/*[+++]Debug for active wakelock before entering suspend */
+//ASUS_BSP +++ Debug for active wakelock before entering suspend
 		printk("[PM]unattended_timer: del_timer (due to late_resume)\n");
 		del_timer(&unattended_timer);
-/*[---]Debug for active wakelock before entering suspend */
+//ASUS_BSP --- Debug for active wakelock before entering suspend
 
 	}
 
@@ -147,7 +149,7 @@ int pm_autosleep_set_state(suspend_state_t state)
 	return 0;
 }
 
-/*[+++]Debug for active wakelock before entering suspend*/
+//ASUS_BSP +++ Debug for active wakelock before entering suspend
 void pmsp_print(void)
 {
 	schedule_work(&pms_printer);
@@ -182,10 +184,11 @@ void pm_cpuinfo_func(struct work_struct *work)
 	printk("%s: Dump PowerManagerService wakelocks, toggle %d\n",__func__, toggle ? 1 : 0);
 	switch_set_state(&pm_dumpthread_dev, toggle);
 }
-/*[---]Debug for active wakelock before entering suspend*/
+//ASUS_BSP --- Debug for active wakelock before entering suspend
+
 int __init pm_autosleep_init(void)
 {
-/*[+++]Debug for active wakelock before entering suspend*/
+//ASUS_BSP +++ Debug for active wakelock before entering suspend
 	int ret;
 	pmsp_dev.name = "PowerManagerServicePrinter";
 	pmsp_dev.index = 0;
@@ -205,7 +208,7 @@ int __init pm_autosleep_init(void)
 	} else{
 		printk("%s:success to register switch device pm_dumpthread_dev\n",__func__);
 	}
-/*[---]Debug for active wakelock before entering suspend*/
+//ASUS_BSP --- Debug for active wakelock before entering suspend
 	autosleep_ws = wakeup_source_register("autosleep");
 	if (!autosleep_ws)
 		return -ENOMEM;

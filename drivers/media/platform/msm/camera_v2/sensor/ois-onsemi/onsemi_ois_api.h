@@ -13,7 +13,7 @@
 //==============================================================================
 #define	MODULE_VENDOR	0
 #define	MDL_VER			2
-#define	SEMCO_VERNUM		0x01130124
+#define	SEMCO_VERNUM		0x01130111
 #define	Primax_VERNUM		0x05130107
 
 typedef	signed char			 INT_8;

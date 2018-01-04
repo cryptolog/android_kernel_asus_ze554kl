@@ -34,11 +34,11 @@
 
 #include "power.h"
 
-/*[+++]Debug for active wakelock before entering suspend*/
+//ASUS_BSP +++ Debug for active wakelock before entering suspend
 #include <linux/wakelock.h>
 int pmsp_flag = 0;
 bool g_resume_status;
-/*[---]Debug for active wakelock before entering suspend*/
+//ASUS_BSP --- Debug for active wakelock before entering suspend
 
 const char *pm_labels[] = { "mem", "standby", "freeze", NULL };
 const char *pm_states[PM_SUSPEND_MAX];
@@ -274,16 +274,18 @@ static int suspend_test(int level)
  */
 static int suspend_prepare(suspend_state_t state)
 {
-	int error;
+	int error, nr_calls = 0;
 
 	if (!sleep_state_supported(state))
 		return -EPERM;
 
 	pm_prepare_console();
 
-	error = pm_notifier_call_chain(PM_SUSPEND_PREPARE);
-	if (error)
+	error = __pm_notifier_call_chain(PM_SUSPEND_PREPARE, -1, &nr_calls);
+	if (error) {
+		nr_calls--;
 		goto Finish;
+	}
 
 	trace_suspend_resume(TPS("freeze_processes"), 0, true);
 	error = suspend_freeze_processes();
@@ -294,7 +296,7 @@ static int suspend_prepare(suspend_state_t state)
 	suspend_stats.failed_freeze++;
 	dpm_save_failed_step(SUSPEND_FREEZE);
  Finish:
-	pm_notifier_call_chain(PM_POST_SUSPEND);
+	__pm_notifier_call_chain(PM_POST_SUSPEND, nr_calls, NULL);
 	pm_restore_console();
 	return error;
 }
@@ -310,8 +312,11 @@ void __weak arch_suspend_enable_irqs(void)
 {
 	local_irq_enable();
 }
+
+//ASUS_BSP +++
 extern void asus_get_rpm_info(void);
 extern void asus_rpmMaster_info(int tag);
+//ASUS_BSP ---
 
 /**
  * suspend_enter - Make the system enter the given sleep state.
@@ -351,7 +356,10 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 			suspend_stats.failed_devs[last_dev]);
 		goto Platform_early_resume;
 	}
+
+//ASUS_BSP +++
 	asus_rpmMaster_info(0);
+//ASUS_BSP ---
 
 	error = platform_suspend_prepare_noirq(state);
 	if (error)
@@ -404,8 +412,11 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 	arch_suspend_enable_irqs();
 	BUG_ON(irqs_disabled());
 
+//ASUS_BSP +++
 	asus_rpmMaster_info(1);
 	asus_get_rpm_info();
+//ASUS_BSP ---
+
  Enable_cpus:
 	enable_nonboot_cpus();
 
@@ -424,7 +435,7 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 	return error;
 }
 
-/*[+++][PM]Debug for active wakelock before entering suspend*/
+//ASUS_BSP +++ [PM]Debug for active wakelock before entering suspend
 extern void print_active_locks(void); /*kernel/drivers/base/power/wakeup.c*/
 void unattended_timer_expired(unsigned long data);
 DEFINE_TIMER(unattended_timer, unattended_timer_expired, 0, 0);
@@ -441,7 +452,7 @@ void unattended_timer_expired(unsigned long data)
 	print_active_locks();
 	mod_timer(&unattended_timer, jiffies + msecs_to_jiffies(g_unattended_timeout));
 }
-/*[---][PM]Debug for active wakelock before entering suspend*/
+//ASUS_BSP --- [PM]Debug for active wakelock before entering suspend
 
 
 /**
@@ -460,10 +471,10 @@ int suspend_devices_and_enter(suspend_state_t state)
 	if (error)
 		goto Close;
 
-/*[+++]Debug for active wakelock before suspend_console()*/
+//ASUS_BSP +++ Debug for active wakelock before suspend_console()
 	printk("[PM]unattended_timer: del_timer (prepare suspend_console())\n");
 	del_timer ( &unattended_timer );
-/*[---]Debug for active wakelock before suspend_console()*/
+//ASUS_BSP --- Debug for active wakelock before suspend_console()
 
 	suspend_console();
 	suspend_test_start();
@@ -489,12 +500,12 @@ int suspend_devices_and_enter(suspend_state_t state)
 	resume_console();
 	trace_suspend_resume(TPS("resume_console"), state, false);
 
-/*[+++]Debug for active wakelock after resume_console()*/
+//ASUS_BSP +++ Debug for active wakelock after resume_console()
 	printk("[PM]unattended_timer: mod_timer(due to resume_console())\n");
 	g_unattended_timeout = PM_UNATTENDED_TIMEOUT_START;
 	mod_timer(&unattended_timer, jiffies + msecs_to_jiffies(g_unattended_timeout));
 	g_resume_status = true;
-/*[---]Debug for active wakelock after resume_console()*/
+//ASUS_BSP --- Debug for active wakelock after resume_console()
  Close:
 	platform_resume_end(state);
 	return error;

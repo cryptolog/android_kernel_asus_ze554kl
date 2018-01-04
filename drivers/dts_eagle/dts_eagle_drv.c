@@ -27,6 +27,7 @@ enum {
 	AUDIO_DEVICE_OUT_BLUETOOTH_A2DP = 0x80,
 	AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_HEADPHONES = 0x100,
 	AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_SPEAKER = 0x200,
+    AUDIO_DEVICE_OUT_USB_DEVICE = 0x4000
 };
 #define AUDIO_DEVICE_COMBO 0x400000 /* bit 23 */
 #define DEVICE_OUT_ALL_BLUETOOTH (AUDIO_DEVICE_OUT_BLUETOOTH_SCO | AUDIO_DEVICE_OUT_BLUETOOTH_SCO_HEADSET | \
@@ -65,7 +66,7 @@ enum {                  /* cache block description */
 
 /* pr_debug */
 #define dts_eagle_drv_dbg_msg(fmt, ...)  \
-	(printk(KERN_INFO "DTS_EAGLE_DRIVER: " fmt "\n", ##__VA_ARGS__))
+	(no_printk(KERN_INFO "DTS_EAGLE_DRIVER: " fmt "\n", ##__VA_ARGS__))
 
 /* pr_err */
 #define dts_eagle_drv_err_msg(fmt, ...)  \
@@ -118,7 +119,7 @@ static void _init_cb_descs(void)
 static s32 _get_cb_for_dev(int device, unsigned int rate )
 {
 	s32 i;
-	const int multi_rate_devices = DEVICE_OUT_ALL_BLUETOOTH;
+	const int multi_rate_devices = DEVICE_OUT_ALL_BLUETOOTH|AUDIO_DEVICE_OUT_USB_DEVICE;
 
 	if (device & AUDIO_DEVICE_COMBO) {
 		for (i = 0; i < CB_COUNT; i++) {

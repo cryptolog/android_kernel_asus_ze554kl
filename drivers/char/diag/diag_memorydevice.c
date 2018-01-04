@@ -129,37 +129,6 @@ void diag_md_close_all()
 	diag_ws_reset(DIAG_WS_MUX);
 }
 
-static int diag_md_get_peripheral(int ctxt)
-{
-	int peripheral;
-
-	if (driver->num_pd_session) {
-		peripheral = GET_PD_CTXT(ctxt);
-		switch (peripheral) {
-		case UPD_WLAN:
-		case UPD_AUDIO:
-		case UPD_SENSORS:
-			break;
-		case DIAG_ID_MPSS:
-		case DIAG_ID_LPASS:
-		case DIAG_ID_CDSP:
-		default:
-			peripheral =
-				GET_BUF_PERIPHERAL(ctxt);
-			if (peripheral > NUM_PERIPHERALS)
-				peripheral = -EINVAL;
-			break;
-		}
-	} else {
-		/* Account for Apps data as well */
-		peripheral = GET_BUF_PERIPHERAL(ctxt);
-		if (peripheral > NUM_PERIPHERALS)
-			peripheral = -EINVAL;
-	}
-
-	return peripheral;
-}
-
 int diag_md_write(int id, unsigned char *buf, int len, int ctx)
 {
 	int i;
@@ -169,62 +138,42 @@ int diag_md_write(int id, unsigned char *buf, int len, int ctx)
 	uint8_t peripheral;
 	struct diag_md_session_t *session_info = NULL;
 
-	//+++[660AN][diag][debug]Diag debug patch for stop issue
-	DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
-	"diag_fr: %s:%d:", __func__, __LINE__);
-	//---[660AN][diag][debug]Diag debug patch for stop issue
+	if (id < 0 || id >= NUM_DIAG_MD_DEV || id >= DIAG_NUM_PROC)
+		return -EINVAL;
 
-	if (id < 0 || id >= NUM_DIAG_MD_DEV || id >= DIAG_NUM_PROC) {
-		//+++[660AN][diag][debug]Diag debug patch for stop issue
-		DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
-		"diag_fr: %s:%d:EINVAL", __func__, __LINE__);
-		//---[660AN][diag][debug]Diag debug patch for stop issue
- 		return -EINVAL;
-		}
-
-	if (!buf || len < 0) {
-		//+++[660AN][diag][debug]Diag debug patch for stop issue
-		DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
-		"diag_fr: %s:%d:EINVAL", __func__, __LINE__);
-		//---[660AN][diag][debug]Diag debug patch for stop issue
- 		return -EINVAL;
-		}
+	if (!buf || len < 0)
+		return -EINVAL;
 
 	peripheral =
 		diag_md_get_peripheral(ctx);
 	if (peripheral < 0)
 		return -EINVAL;
 
-	session_info = diag_md_session_get_peripheral(peripheral);
-	if (!session_info) {
-		//+++[660AN][diag][debug]Diag debug patch for stop issue
-		DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
-		"diag_fr: %s:%d:EIO", __func__, __LINE__);
-		//---[660AN][diag][debug]Diag debug patch for stop issue
- 		return -EIO;
-	}
+	session_info =
+		diag_md_session_get_peripheral(peripheral);
+	if (!session_info)
+		return -EIO;
 
 	ch = &diag_md[id];
+	if (!ch)
+		return -EINVAL;
 
 	spin_lock_irqsave(&ch->lock, flags);
 	for (i = 0; i < ch->num_tbl_entries && !found; i++) {
 		if (ch->tbl[i].buf != buf)
 			continue;
 		found = 1;
-		//+[660AN][diag][debug]Diag debug patch for stop issue
-		DIAG_LOG(DIAG_DEBUG_PERIPHERALS,"diag: trying to write the same buffer buf: %pK, ctxt: %d len: %d at i: %d back to the table, proc: %d, mode: %d\n",
-				   buf, ctx, ch->tbl[i].len,
-				   i, id, driver->logging_mode);
+		pr_err_ratelimited("diag: trying to write the same buffer buf: %pK, len: %d, back to the table for p: %d, t: %d, buf_num: %d, proc: %d, i: %d\n",
+				   buf, ch->tbl[i].len, GET_BUF_PERIPHERAL(ctx),
+				   GET_BUF_TYPE(ctx), GET_BUF_NUM(ctx), id, i);
+		ch->tbl[i].buf = NULL;
+		ch->tbl[i].len = 0;
+		ch->tbl[i].ctx = 0;
 	}
 	spin_unlock_irqrestore(&ch->lock, flags);
 
-	if (found) {
-		//+++[660AN][diag][debug]Diag debug patch for stop issue
-		DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
-		"diag_fr: %s:%d:ENOMEM", __func__, __LINE__);
-		//---[660AN][diag][debug]Diag debug patch for stop issue
- 		return -ENOMEM;
-	}
+	if (found)
+		return -ENOMEM;
 
 	spin_lock_irqsave(&ch->lock, flags);
 	for (i = 0; i < ch->num_tbl_entries && !found; i++) {
@@ -239,12 +188,8 @@ int diag_md_write(int id, unsigned char *buf, int len, int ctx)
 	spin_unlock_irqrestore(&ch->lock, flags);
 
 	if (!found) {
-		//+++[660AN][diag][debug]Diag debug patch for stop issue
-		DIAG_LOG(DIAG_DEBUG_PERIPHERALS,"diag: Unable to find an empty space in table, please reduce logging rate, proc: %d\n",
+		pr_err_ratelimited("diag: Unable to find an empty space in table, please reduce logging rate, proc: %d\n",
 				   id);
-		DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
-		"diag_fr: %s:%d:ENOMEM", __func__, __LINE__);
-		//---[660AN][diag][debug]Diag debug patch for stop issue
 		return -ENOMEM;
 	}
 
@@ -257,17 +202,12 @@ int diag_md_write(int id, unsigned char *buf, int len, int ctx)
 
 		found = 1;
 		driver->data_ready[i] |= USER_SPACE_DATA_TYPE;
-		DIAG_LOG(DIAG_DEBUG_PERIPHERALS,"diag: wake up logging process\n");//+DIAG_LOG(DIAG_DEBUG_PERIPHERALS,"diag: wake up logging process\n");
+		pr_debug("diag: wake up logging process\n");
 		wake_up_interruptible(&driver->wait_q);
 	}
 
-	if (!found) {
-		//+++[660AN][diag][debug]Diag debug patch for stop issue
-		DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
-		"diag_fr: %s:%d:EINVAL", __func__, __LINE__);
-		//---[660AN][diag][debug]Diag debug patch for stop issue
- 		return -EINVAL;
-		}
+	if (!found)
+		return -EINVAL;
 
 	return 0;
 }
@@ -288,16 +228,11 @@ int diag_md_copy_to_user(char __user *buf, int *pret, size_t buf_size,
 	struct diag_md_session_t *session_info = NULL;
 	struct pid *pid_struct = NULL;
 
-	DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
-	"diag_fr: %s:%d:", __func__, __LINE__);
-
-	mutex_lock(&driver->diagfwd_untag_mutex);
-
 	for (i = 0; i < NUM_DIAG_MD_DEV && !err; i++) {
 		ch = &diag_md[i];
 		for (j = 0; j < ch->num_tbl_entries && !err; j++) {
 			entry = &ch->tbl[j];
-			if (entry->len <= 0)
+			if (entry->len <= 0 || entry->buf == NULL)
 				continue;
 
 			peripheral = diag_md_get_peripheral(entry->ctx);
@@ -397,16 +332,10 @@ drop_data:
 		err = copy_to_user(buf + sizeof(int),
 				(void *)&num_data,
 				sizeof(int));
-	} else {
-		DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
-			"diag: md_session_map[%d] with pid = %d Exited..\n",
-			peripheral, driver->md_session_map[peripheral]->pid);
 	}
 	diag_ws_on_copy_complete(DIAG_WS_MUX);
 	if (drain_again)
 		chk_logging_wakeup();
-
-	mutex_unlock(&driver->diagfwd_untag_mutex);
 
 	return err;
 }

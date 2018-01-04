@@ -1636,6 +1636,8 @@
 			};
 		};
 
+
+		/* ASUS BSP add for charger +++ */
 		charger_usb_switch {
 			usb_switch_active: usb_switch_active {
 				mux {
@@ -1645,7 +1647,7 @@
 				config {
 					pins = "gpio59";
 					drive-strength = <2>; /* 2 mA */
-					bias-pull-down; /* pull down */
+					bias-pull-down; /* pull down*/
 				};
 			};
 
@@ -1661,6 +1663,37 @@
 				};
 			};
 		};
+
+		charger_usb_LID_en {
+			LID_en_sleep: LID_en_sleep {
+				mux {
+					pins = "gpio71";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio71";
+					drive-strength = <2>;   /* 2 mA */
+					bias-disable;           /* NO PULL */
+					output-high;
+				};
+			};
+
+			LID_en_active: LID_en_active {
+				mux {
+					pins = "gpio71";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio71";
+					drive-strength = <2>;   /* 2 mA */
+					bias-disable;           /* NO PULL */
+					output-high;
+				};
+			};
+		};
+		/* ASUS BSP add for charger --- */
 
 		mdss_dp_aux_active: mdss_dp_aux_active {
 			mux {

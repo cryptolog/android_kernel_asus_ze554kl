@@ -35,9 +35,11 @@ static LIST_HEAD(clk_list);
 static DEFINE_MUTEX(clk_list_lock);
 
 static struct dentry *debugfs_base;
+//ASUS_BSP +++
 /*[PM] Enable clock_debug_print_enabled_clocks() during suspend for clock count debug.*/
 /*[PM] ./sys/kernel/debug/clk/debug_suspend */
 static u32 debug_suspend=1;
+//ASUS_BSP ---
 
 static int clock_debug_rate_set(void *data, u64 val)
 {
@@ -282,25 +284,30 @@ do {							\
 		pr_info(fmt, ##__VA_ARGS__);		\
 } while (0)
 
+//ASUS_BSP +++
 static bool bIsCXO_clk = false;	/*for cxo_clk_src exists*/
 static bool b_clk_dump = false;	/*for manual debug mode*//*[PM] ./sys/module/clock_debug/parameters/force_clk_dump*/ 
+//ASUS_BSP ---
 static int clock_debug_print_clock(struct clk *c, struct seq_file *m)
 {
 	char *start = "";
 
 	if (!c || !c->prepare_count)
 		return 0;
+
+//ASUS_BSP +++
 	if ((bIsCXO_clk == true) || (b_clk_dump == true)) {
 		clock_debug_output(m, 0, "\t");
 	}
+//ASUS_BSP ---
 
 	do {
-		//[+++]Only dump active clcoks when cxo_clk_src exists
+		//ASUS_BSP +++ Only dump active clcoks when cxo_clk_src exists
 		if (strcmp(c->dbg_name, "cxo_clk_src")==0) {
 			bIsCXO_clk = true;
 		}
-		//[---]Only dump active clcoks when cxo_clk_src exists
-		if ((bIsCXO_clk == true) || (b_clk_dump == true)) {
+		//ASUS_BSP --- Only dump active clcoks when cxo_clk_src exists
+		if ((bIsCXO_clk == true) || (b_clk_dump == true)) { //ASUS_BSP +
 			if (c->vdd_class)
 				clock_debug_output(m, 1, "%s%s:%u:%u [%ld, %d]", start,
 					c->dbg_name, c->prepare_count, c->count,
@@ -312,20 +319,23 @@ static int clock_debug_print_clock(struct clk *c, struct seq_file *m)
 			start = " -> ";
 		}
 	} while ((c = clk_get_parent(c)));
-	//[+++]Only dump active clcoks when cxo_clk_src exists
+
+	//ASUS_BSP +++ Only dump active clcoks when cxo_clk_src exists
 	if ((bIsCXO_clk == true) || (b_clk_dump == true)) {
 		clock_debug_output(m, 1, "\n");
 	}
-	//[---]Only dump active clcoks when cxo_clk_src exists
+	//ASUS_BSP --- Only dump active clcoks when cxo_clk_src exists
 
 	return 1;
 }
 
+//ASUS_BSP +++
 /*[PM] Add ASUS debug node to refine much logs for clock_debug_print_enabled_clocks()*/
 /*[PM] ./sys/module/clock_debug/parameters/force_clk_dump*/
 module_param_named(
 	force_clk_dump, b_clk_dump, bool, S_IRUSR | S_IWUSR
 );
+//ASUS_BSP ---
 
 /**
  * clock_debug_print_enabled_clocks() - Print names of enabled clocks
@@ -350,7 +360,10 @@ static void clock_debug_print_enabled_clocks(struct seq_file *m)
 		clock_debug_output(m, 0, "Enabled clock count: %d\n", cnt);
 	else
 		clock_debug_output(m, 0, "No clocks enabled.\n");
+
+//ASUS_BSP +++
 	bIsCXO_clk = false; /*[PM] Reset this flag after clock_debug_print_enabled_clocks()*/
+//ASUS_BSP ---
 }
 
 static int enabled_clocks_show(struct seq_file *m, void *unused)

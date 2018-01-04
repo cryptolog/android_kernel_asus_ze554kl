@@ -52,7 +52,7 @@
 #define PISCES_BOE_FW_IMAGE_NAME "synaptics/Pisces_BOE_TD4300_PR2330212_80040301.img"
 #define PISCES_TM_FW_IMAGE_NAME "synaptics/Pisces_TM_TD4300_PR2347791_80010301.img"
 
-#define Titan_BOE_FW_IMAGE_NAME "synaptics/Asus_Titan_424F0032.img"
+#define Titan_BOE_FW_IMAGE_NAME "synaptics/Asus_Titan_424F0031.img"
 //#define Titan_BOE_FW_IMAGE_NAME "synaptics/PR2551835-td4300-i2c-boe_Asus_Titan-12bit-00000001_0419.img"
 #define DO_STARTUP_FW_UPDATE
 

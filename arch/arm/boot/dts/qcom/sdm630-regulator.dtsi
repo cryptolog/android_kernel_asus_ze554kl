@@ -342,7 +342,7 @@
 		pm660l_l3: regulator-l3 {
 			regulator-min-microvolt = <3000000>;
 			regulator-max-microvolt = <3600000>;
-			regulator-always-on;	/* ASUS BSP Always Enable 3V for ALS/PS Sensors */
+			regulator-always-on;	/* ASUS BSP Always Enable 1.8V for I2C & Sensors */
 			status = "okay";
 		};
 	};
@@ -377,7 +377,7 @@
 	rpm-regulator-ldob7 {
 		status = "okay";
 		pm660l_l7: regulator-l7 {
-			regulator-min-microvolt = <3125000>;
+			regulator-min-microvolt = <2700000>;
 			regulator-max-microvolt = <3125000>;
 			parent-supply = <&pm660_l10>;
 			status = "okay";

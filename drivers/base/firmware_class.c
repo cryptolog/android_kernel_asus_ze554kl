@@ -295,6 +295,7 @@ static void fw_free_buf(struct firmware_buf *buf)
 {
 	struct firmware_cache *fwc = buf->fwc;
 	if (!fwc) {
+		kfree_const(buf->fw_id);
 		kfree(buf);
 		return;
 	}
@@ -310,7 +311,8 @@ static const char * const fw_path[] = {
 	"/lib/firmware/updates/" UTS_RELEASE,
 	"/lib/firmware/updates",
 	"/lib/firmware/" UTS_RELEASE,
-	"/lib/firmware"
+	"/lib/firmware",
+	"/lib64/firmware"
 };
 
 /*
@@ -371,12 +373,12 @@ static int fw_get_filesystem_firmware(struct device *device,
 	int i, len;
 	int rc = -ENOENT;
 	char *path;
-	/* ASUS BSP : For Change SSC FW loading path to system/etc/firmware +++*/
-	char fw_name[4];
+	/* ASUS BSP : For Change ADSP FW loading path to system/vendor/firmware +++*/
+	char fw_name[5];
 	/* ASUS BSP ---*/
-
-	/* ASUS BSP : For Change Venus FW loading path to system/etc/firmware +++*/
-	char v_name[5];
+	
+	/* ASUS BSP : For Change Venus FW loading path to system/vendor/firmware +++*/
+	char v_fw_name[6];
 	/* ASUS BSP ---*/
 
 	path = __getname();
@@ -397,37 +399,36 @@ static int fw_get_filesystem_firmware(struct device *device,
 			break;
 		}
 
-		/* ASUS BSP : For Change SSC FW loading path to system/etc/firmware */
+		/* ASUS BSP : For Change ADSP FW loading path to system/vendor/firmware */
 		snprintf(fw_name, 5, "%s", buf->fw_id);
 		if (!strcmp(fw_name, "adsp")  && i == 1 ) {
-			if (!strcmp(buf->fw_id, "adsp.mdt"))	{
+			if (!strcmp(buf->fw_id, "adsp.mdt"))    {
 				if ( g_ASUS_prjID == 0x07 )
-					dev_err(device, "[Sensor] This project is : SDM630(0x%x) \n", g_ASUS_prjID);
+					dev_err(device, "[ADSP] This project is : SDM630(0x%x) \n", g_ASUS_prjID);
 				else if ( g_ASUS_prjID == 0x05 )
-					dev_err(device, "[Sensor] This project is : SDM660(0x%x) \n", g_ASUS_prjID);
+					dev_err(device, "[ADSP] This project is : SDM660(0x%x) \n", g_ASUS_prjID);
 				else
-					dev_err(device, "[Sensor] Unknown project(0x%x) \n", g_ASUS_prjID);
+					dev_err(device, "[ADSP] Unknown project(0x%x) \n", g_ASUS_prjID);
 			}
-			if ( g_ASUS_prjID == 0x07 )	{
-				snprintf(path, PATH_MAX, "%s/%s", "/system/etc/firmware/q6_Sdm630_image", buf->fw_id);
-				dev_err(device, "[Sensor] Try to load firmware : %s \n", path);
+			if ( g_ASUS_prjID == 0x07 )     {
+				snprintf(path, PATH_MAX, "%s/%s", "/system/vendor/firmware/q6_Sdm630_image", buf->fw_id);
+				dev_err(device, "[ADSP] Try to load firmware : %s \n", path);
 			}
-			else if ( g_ASUS_prjID == 0x05 )	{
-				snprintf(path, PATH_MAX, "%s/%s", "/system/etc/firmware/q6_Sdm660_image", buf->fw_id);
-				dev_err(device, "[Sensor] Try to load firmware : %s \n", path);
+			else if ( g_ASUS_prjID == 0x05 )        {
+				snprintf(path, PATH_MAX, "%s/%s", "/system/vendor/firmware/q6_Sdm660_image", buf->fw_id);
+				dev_err(device, "[ADSP] Try to load firmware : %s \n", path);
 			}
-			else	{
-				snprintf(path, PATH_MAX, "%s/%s", "/system/etc/firmware/q6_Sdm630_image", buf->fw_id);
-				dev_err(device, "[Sensor] Try to load firmware : %s \n", path);
+			else    {
+				snprintf(path, PATH_MAX, "%s/%s", "/system/vendor/firmware/q6_Sdm630_image", buf->fw_id);
+				dev_err(device, "[ADSP] Try to load firmware : %s \n", path);
 			}
 		}
 		/* ASUS BSP ---*/
 
-              /* ASUS BSP : For Change Venus FW loading path to system/etc/firmware */
-              snprintf(v_name, 6, "%s", buf->fw_id);
-              if (!strcmp(v_name, "venus")  && i == 1 ) {
-
-			if (!strcmp(buf->fw_id, "venus.mdt"))	{
+		/* ASUS BSP : For Change Venus FW loading path to system/vendor/firmware */
+		snprintf(v_fw_name, 6, "%s", buf->fw_id);
+		if (!strcmp(v_fw_name, "venus")  && i == 1 ) {
+			if (!strcmp(buf->fw_id, "venus.mdt")) {
 				if ( g_ASUS_prjID == 0x07 )
 					dev_err(device, "[Codec] This project is : SDM630(0x%x) \n", g_ASUS_prjID);
 				else if ( g_ASUS_prjID == 0x05 )
@@ -436,20 +437,20 @@ static int fw_get_filesystem_firmware(struct device *device,
 					dev_err(device, "[Codec] Unknown project(0x%x) \n", g_ASUS_prjID);
 			}
 			if ( g_ASUS_prjID == 0x07 )	{
-				snprintf(path, PATH_MAX, "%s/%s", "/system/etc/firmware/titan630", buf->fw_id);
+				snprintf(path, PATH_MAX, "%s/%s", "/system/vendor/firmware/sdm630", buf->fw_id);
 				dev_err(device, "[Codec] Try to load firmware : %s \n", path);
 			}
-			else if ( g_ASUS_prjID == 0x05 )	{
-				snprintf(path, PATH_MAX, "%s/%s", "/system/etc/firmware/titan660", buf->fw_id);
+			else if ( g_ASUS_prjID == 0x05 ) {
+				snprintf(path, PATH_MAX, "%s/%s", "/system/vendor/firmware/sdm660", buf->fw_id);
 				dev_err(device, "[Codec] Try to load firmware : %s \n", path);
 			}
-			else	{
-				snprintf(path, PATH_MAX, "%s/%s", "/system/etc/firmware/titan630", buf->fw_id);
+			else {
+				snprintf(path, PATH_MAX, "%s/%s", "/system/vendor/firmware/sdm630", buf->fw_id);
 				dev_err(device, "[Codec] Try to load firmware : %s \n", path);
 			}
-              }
-              /* ASUS BSP ---*/
-
+		}
+		/* ASUS BSP ---*/
+              
 		file = filp_open(path, O_RDONLY, 0);
 		if (IS_ERR(file))
 			continue;
@@ -1171,13 +1172,14 @@ static int _request_firmware_load(struct firmware_priv *fw_priv,
 		timeout = MAX_JIFFY_OFFSET;
 	}
 
-	retval = wait_for_completion_interruptible_timeout(&buf->completion,
+	timeout = wait_for_completion_interruptible_timeout(&buf->completion,
 			timeout);
-	if (retval == -ERESTARTSYS || !retval) {
+	if (timeout == -ERESTARTSYS || !timeout) {
+		retval = timeout;
 		mutex_lock(&fw_lock);
 		fw_load_abort(fw_priv);
 		mutex_unlock(&fw_lock);
-	} else if (retval > 0) {
+	} else if (timeout > 0) {
 		retval = 0;
 	}
 

@@ -165,7 +165,14 @@ void mdss_dsi_clk_req(struct mdss_dsi_ctrl_pdata *ctrl,
 
 	MDSS_XLOG(ctrl->ndx, enable, ctrl->mdp_busy, current->pid,
 		client);
-	if (enable == 0) {
+	/*
+	 * ensure that before going into ecg or turning
+	 * off the clocks, cmd_mdp_busy is not true. During a
+	 * race condition, clocks are turned off and so the
+	 * isr for cmd_mdp_busy does not get cleared in hw.
+	 */
+	if (enable == MDSS_DSI_CLK_OFF ||
+		enable == MDSS_DSI_CLK_EARLY_GATE) {
 		/* need wait before disable */
 		mutex_lock(&ctrl->cmd_mutex);
 		mdss_dsi_cmd_mdp_busy(ctrl);
@@ -1154,6 +1161,8 @@ static int mdss_dsi_read_status(struct mdss_dsi_ctrl_pdata *ctrl)
 
 		rc = mdss_dsi_cmdlist_put(ctrl, &cmdreq);
 		if (rc <= 0) {
+			if (!mdss_dsi_sync_wait_enable(ctrl) ||
+				mdss_dsi_sync_wait_trigger(ctrl))
 			pr_err("%s: get status: fail\n", __func__);
 			return rc;
 		}
@@ -2127,7 +2136,6 @@ end:
 	return rp->read_cnt;
 }
 
-//#define DSI_CMD_DEBUG 1	//ASUS BSP Display +++
 static int mdss_dsi_cmd_dma_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 					struct dsi_buf *tp)
 {
@@ -2135,22 +2143,9 @@ static int mdss_dsi_cmd_dma_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 	int domain = MDSS_IOMMU_DOMAIN_UNSECURE;
 	char *bp;
 	struct mdss_dsi_ctrl_pdata *mctrl = NULL;
-	//ASUS BSP Display +++
-	#ifdef DSI_CMD_DEBUG
-	int i;
-	#endif
-	//ASUS BSP Display ---
 	int ignored = 0;	/* overflow ignored */
 
 	bp = tp->data;
-	//ASUS BSP Display +++
-	#ifdef DSI_CMD_DEBUG
-	printk("%s: ", __func__);
-	for (i = 0; i < tp->len; i++)
-		printk("%x \n", *bp++);
-	printk("\n");
-	#endif
-	//ASUS BSP Display ---
 
 	len = ALIGN(tp->len, 4);
 	ctrl->dma_size = ALIGN(tp->len, SZ_4K);
@@ -2280,6 +2275,7 @@ static int mdss_dsi_cmd_dma_rx(struct mdss_dsi_ctrl_pdata *ctrl,
 	bool ack_error = false;
 	char reg[16] = {0x0};
 	int repeated_bytes = 0;
+	struct mdss_dsi_ctrl_pdata *mctrl = mdss_dsi_get_other_ctrl(ctrl);
 
 	lp = (u32 *)rp->data;
 	temp = (u32 *)reg;
@@ -2340,7 +2336,11 @@ static int mdss_dsi_cmd_dma_rx(struct mdss_dsi_ctrl_pdata *ctrl,
 	off += ((cnt - 1) * 4);
 
 	for (i = 0; i < cnt; i++) {
-		data = (u32)MIPI_INP((ctrl->ctrl_base) + off);
+		if (mdss_dsi_sync_wait_trigger(ctrl))
+			data = (u32)MIPI_INP((mctrl->ctrl_base) + off);
+		else
+			data = (u32)MIPI_INP((ctrl->ctrl_base) + off);
+
 		/* to network byte order */
 		if (!repeated_bytes)
 			*lp++ = ntohl(data);

@@ -17,9 +17,9 @@
 #include "ze554kl-er1-sdm660-qrd.dtsi"
 
 / {
-	model = "Qualcomm Technologies, Inc. SDM 660 PM660 + PM660L QRD";
+	model = "Qualcomm Technologies, Inc. ZE554KL SDM 660 PM660 + PM660L QRD";
 	compatible = "qcom,sdm660-qrd", "qcom,sdm660", "qcom,qrd";
-	qcom,board-id = <22 0>;
+	qcom,board-id = <20 0>,<21 0>,<22 0>;
 	qcom,pmic-id = <0x0001001b 0x0101011a 0x0 0x0>,
 			<0x0001001b 0x0201011a 0x0 0x0>;
 };
@@ -28,7 +28,7 @@
 	qcom,mdss-pref-prim-intf = "dsi";
 };
 
-/*&mdss_fb0 {
+/* &mdss_fb0 {
 	qcom,mdss-mixer-swap;
 };*/
 
@@ -37,7 +37,6 @@
 };
 
 &mdss_dsi0 {
-	//qcom,dsi-pref-prim-pan = <&dsi_dual_nt36850_truly_cmd>;
 	qcom,dsi-pref-prim-pan = <&dsi_titan_tm_1080p_video>;
 	qcom,dsi-pref-prim-pan = <&dsi_boe_td4300_1080p_video>;
 	qcom,dsi-pref-prim-pan = <&dsi_tm5p5_r63350_1080p_video>;
@@ -47,35 +46,25 @@
 	qcom,platform-reset-gpio = <&tlmm 53 0>;
 	//qcom,platform-te-gpio = <&tlmm 59 0>;
 };
-/*
-&mdss_dsi1 {
+
+/* &mdss_dsi1 {
 	qcom,dsi-pref-prim-pan = <&dsi_dual_nt36850_truly_cmd>;
 	pinctrl-names = "mdss_default", "mdss_sleep";
 	pinctrl-0 = <&mdss_dsi_active &mdss_te_active>;
 	pinctrl-1 = <&mdss_dsi_suspend &mdss_te_suspend>;
 	qcom,platform-reset-gpio = <&tlmm 53 0>;
 	qcom,platform-te-gpio = <&tlmm 59 0>;
-};
-*/
+};*/
 
 &dsi_titan_tm_1080p_video {
-	/*qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_wled";
-	qcom,mdss-dsi-bl-min-level = <1>;
-	qcom,mdss-dsi-bl-max-level = <4095>;*/
 	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
 };
 
 &dsi_boe_td4300_1080p_video {
-	/*qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_wled";
-	qcom,mdss-dsi-bl-min-level = <1>;
-	qcom,mdss-dsi-bl-max-level = <4095>;*/
 	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
 };
 
 &dsi_tm5p5_r63350_1080p_video {
-	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_wled";
-	qcom,mdss-dsi-bl-min-level = <1>;
-	qcom,mdss-dsi-bl-max-level = <4095>;
 	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
 };
 
@@ -86,12 +75,8 @@
 	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
 };
 
-&pm660l_wled {
-	qcom,led-strings-list = [00 01];
-};
-
 &soc {
-	/*hbtp {
+	hbtp {
 		compatible = "qcom,hbtp-input";
 		pinctrl-names = "pmx_ts_active", "pmx_ts_suspend";
 		pinctrl-0 = <&ts_rst_active>;
@@ -108,5 +93,5 @@
 		qcom,afe-force-power-on;
 		qcom,afe-power-on-delay-us = <1000>;
 		qcom,afe-power-off-delay-us = <6>;
-	};*/
+	};
 };

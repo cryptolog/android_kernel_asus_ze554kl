@@ -68,7 +68,9 @@ int  fts_cover_exit(struct i2c_client *client);
 int  fts_enter_charger_mode(struct i2c_client *client, int mode );
 int  fts_charger_init(struct i2c_client *client);
 int  fts_charger_exit(struct i2c_client *client);
+#if PREO_MINIPORTING
 extern void synaptic_usb_detection(bool plugin);
+#endif
 bool cover_call_glove = false;
 bool cover_enable_touch_f = false;
 /*****************************************************************************
@@ -189,7 +191,7 @@ static ssize_t fts_touch_cover_store(struct device *dev, struct device_attribute
 		{
 			printk("[Mode]exit cover mode");
             g_fts_mode_flag.fts_cover_mode_flag = false;
-			fts_wq_data->cover_mode_eable =0;
+			fts_wq_data->cover_mode_eable =0 ;
 			cover_enable_touch_f = false;
 			cover_call_glove = true;
             ret = fts_enter_glove_mode(fts_i2c_client,false);
@@ -315,7 +317,9 @@ void focal_usb_detection(bool plugin)
             		ret = fts_enter_charger_mode(fts_i2c_client,true);
         		}
     		}else {
+#if PREO_MINIPORTING
     			synaptic_usb_detection(true);
+#endif
     		}
     			
 		}
@@ -329,7 +333,9 @@ void focal_usb_detection(bool plugin)
             		ret = fts_enter_charger_mode(fts_i2c_client,false);
         		}
     		}else {
+#if PREO_MINIPORTING
     			synaptic_usb_detection(false);
+#endif
     		}
 			
     	}

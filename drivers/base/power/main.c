@@ -38,11 +38,13 @@
 #include "../base.h"
 #include "power.h"
 
+//ASUS_BSP +++
 /*[PM] pm_pwrcs_ret:
 	This flag mean dpm_suspend has been callback.
 	pm_pwrcs_ret will be cheked in function which is resume_console in printk.c
 */
 unsigned int pm_pwrcs_ret=0;
+//ASUS_BSP ---
 
 typedef int (*pm_callback_t)(struct device *);
 
@@ -364,10 +366,10 @@ static void pm_dev_err(struct device *dev, pm_message_t state, char *info,
 	printk("[PM]: Device %s failed to %s%s: error %d\n",
 		dev_name(dev), pm_verb(state.event), info, error);
 
-/*[PM] Add suspend fail log to ASUSevtlog when pm_dev_err*/
+//ASUS_BSP +++ [PM] Add suspend fail log to ASUSevtlog when pm_dev_err
 	ASUSEvtlog("PM: Device %s failed to %s%s: error %d\n",
 		dev_name(dev), pm_verb(state.event), info, error);
-/*[PM] Add suspend fail log to ASUSevtlog when pm_dev_err*/
+//ASUS_BSP --- [PM] Add suspend fail log to ASUSevtlog when pm_dev_err
 }
 
 static void dpm_show_time(ktime_t starttime, pm_message_t state, char *info)
@@ -901,7 +903,7 @@ void dpm_resume(pm_message_t state)
 		usecs64 = ktime_to_ns(ktime_sub(time_exit, time_enter));
 		do_div(usecs64, NSEC_PER_USEC);
 		usecs = usecs64;
-		if (usecs > 100000) { //100ms
+		if (usecs > 300000) { //300ms
 			pr_info("PM: %s: dev_name=%s took about %ld msecs to resume!\n",__func__,dev_name(dev),usecs / USEC_PER_MSEC);
 		}
 	}
@@ -1049,6 +1051,8 @@ static int __device_suspend_noirq(struct device *dev, pm_message_t state, bool a
 	TRACE_DEVICE(dev);
 	TRACE_SUSPEND(0);
 
+	dpm_wait_for_children(dev, async);
+
 	if (async_error)
 		goto Complete;
 
@@ -1059,8 +1063,6 @@ static int __device_suspend_noirq(struct device *dev, pm_message_t state, bool a
 
 	if (dev->power.syscore || dev->power.direct_complete)
 		goto Complete;
-
-	dpm_wait_for_children(dev, async);
 
 	if (dev->pm_domain) {
 		info = "noirq power domain ";
@@ -1196,6 +1198,8 @@ static int __device_suspend_late(struct device *dev, pm_message_t state, bool as
 
 	__pm_runtime_disable(dev, false);
 
+	dpm_wait_for_children(dev, async);
+
 	if (async_error)
 		goto Complete;
 
@@ -1206,8 +1210,6 @@ static int __device_suspend_late(struct device *dev, pm_message_t state, bool as
 
 	if (dev->power.syscore || dev->power.direct_complete)
 		goto Complete;
-
-	dpm_wait_for_children(dev, async);
 
 	if (dev->pm_domain) {
 		info = "late power domain ";
@@ -1559,7 +1561,7 @@ int dpm_suspend(pm_message_t state)
 		if (async_error)
 			break;
 	}
-	pm_pwrcs_ret = 1; /* [PM] This flag can check dpm_suspend state for resume_console in printk.c */
+	pm_pwrcs_ret = 1; //ASUS_BSP + [PM] This flag can check dpm_suspend state for resume_console in printk.c
 	mutex_unlock(&dpm_list_mtx);
 	async_synchronize_full();
 	if (!error)

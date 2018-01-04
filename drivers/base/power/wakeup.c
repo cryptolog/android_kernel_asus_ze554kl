@@ -20,10 +20,10 @@
 
 #include "power.h"
 
-//[+++]Debug for active wakelock before entering suspend
+//ASUS_BSP +++ Debug for active wakelock before entering suspend
 void print_active_locks(void);
 extern bool g_resume_status;
-//[---]Debug for active wakelock before entering suspend
+//ASUS_BSP --- Debug for active wakelock before entering suspend
 
 /*
  * If set, the suspend/hibernate code will abort transitions to a sleep state
@@ -65,6 +65,8 @@ static void pm_wakeup_timer_fn(unsigned long data);
 static LIST_HEAD(wakeup_sources);
 
 static DECLARE_WAIT_QUEUE_HEAD(wakeup_count_wait_queue);
+
+DEFINE_STATIC_SRCU(wakeup_srcu);
 
 static struct wakeup_source deleted_ws = {
 	.name = "deleted",
@@ -178,6 +180,7 @@ void wakeup_source_add(struct wakeup_source *ws)
 
 	if (WARN_ON(!ws))
 		return;
+
 	spin_lock_init(&ws->lock);
 	setup_timer(&ws->timer, pm_wakeup_timer_fn, (unsigned long)ws);
 	ws->active = false;
@@ -203,7 +206,7 @@ void wakeup_source_remove(struct wakeup_source *ws)
 	spin_lock_irqsave(&events_lock, flags);
 	list_del_rcu(&ws->entry);
 	spin_unlock_irqrestore(&events_lock, flags);
-	synchronize_rcu();
+	synchronize_srcu(&wakeup_srcu);
 }
 EXPORT_SYMBOL_GPL(wakeup_source_remove);
 
@@ -264,15 +267,20 @@ static int device_wakeup_attach(struct device *dev, struct wakeup_source *ws)
 int device_wakeup_enable(struct device *dev)
 {
 	struct wakeup_source *ws;
+//ASUS_BSP +++ modify wakelock name to prevent battery historian parsing error
 	char name[100] = "";
 	int num = 100;
 	const char *wsName;
 	int i;
+//ASUS_BSP --- modify wakelock name to prevent battery historian parsing error
 	int ret;
+//ASUS_BSP +++ modify wakelock name to prevent battery historian parsing error
 	bool reNamed = false;
+//ASUS_BSP --- modify wakelock name to prevent battery historian parsing error
 
 	if (!dev || !dev->power.can_wakeup)
 		return -EINVAL;
+//ASUS_BSP +++ modify wakelock name to prevent battery historian parsing error
 	wsName = dev_name(dev);
 	num = strlen(wsName);
 	if (num > 100) {
@@ -293,6 +301,7 @@ int device_wakeup_enable(struct device *dev)
 	} else{
 		ws = wakeup_source_register(dev_name(dev));
 	}
+//ASUS_BSP --- modify wakelock name to prevent battery historian parsing error
 	if (!ws)
 		return -ENOMEM;
 
@@ -358,13 +367,14 @@ void device_wakeup_detach_irq(struct device *dev)
 void device_wakeup_arm_wake_irqs(void)
 {
 	struct wakeup_source *ws;
+	int srcuidx;
 
-	rcu_read_lock();
+	srcuidx = srcu_read_lock(&wakeup_srcu);
 	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
 		if (ws->wakeirq)
 			dev_pm_arm_wake_irq(ws->wakeirq);
 	}
-	rcu_read_unlock();
+	srcu_read_unlock(&wakeup_srcu, srcuidx);
 }
 
 /**
@@ -375,13 +385,14 @@ void device_wakeup_arm_wake_irqs(void)
 void device_wakeup_disarm_wake_irqs(void)
 {
 	struct wakeup_source *ws;
+	int srcuidx;
 
-	rcu_read_lock();
+	srcuidx = srcu_read_lock(&wakeup_srcu);
 	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
 		if (ws->wakeirq)
 			dev_pm_disarm_wake_irq(ws->wakeirq);
 	}
-	rcu_read_unlock();
+	srcu_read_unlock(&wakeup_srcu, srcuidx);
 }
 
 /**
@@ -866,10 +877,10 @@ EXPORT_SYMBOL_GPL(pm_get_active_wakeup_sources);
 void pm_print_active_wakeup_sources(void)
 {
 	struct wakeup_source *ws;
-	int active = 0;
+	int srcuidx, active = 0;
 	struct wakeup_source *last_activity_ws = NULL;
 
-	rcu_read_lock();
+	srcuidx = srcu_read_lock(&wakeup_srcu);
 	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
 		if (ws->active) {
 			printk("[PM] pm_print_active_wakeup_sources(): %s\n", ws->name);
@@ -885,7 +896,7 @@ void pm_print_active_wakeup_sources(void)
 	if (!active && last_activity_ws)
 		printk("[PM] last active wakeup source: %s\n",
 			last_activity_ws->name);
-	rcu_read_unlock();
+	srcu_read_unlock(&wakeup_srcu, srcuidx);
 }
 EXPORT_SYMBOL_GPL(pm_print_active_wakeup_sources);
 
@@ -953,8 +964,10 @@ void pm_system_irq_wakeup(unsigned int irq_number)
  * Return 'false' if the current number of wakeup events being processed is
  * nonzero.  Otherwise return 'true'.
  */
+//ASUS_BSP +++
 static bool g_is_print_active_locks_worker_init = false;
 static struct delayed_work print_active_locks_work;
+//ASUS_BSP ---
 bool pm_get_wakeup_count(unsigned int *count, bool block)
 {
 	unsigned int cnt, inpr;
@@ -969,14 +982,14 @@ bool pm_get_wakeup_count(unsigned int *count, bool block)
 			if (inpr == 0 || signal_pending(current))
 				break;
 /* Temporarily removed. It should be checked later for power consumption */
-/*[+++]Debug for active wakelock before entering suspend*/
+//ASUS_BSP +++ Debug for active wakelock before entering suspend
 			if (!g_resume_status){
 				printk("[PM] pm_get_wakeup_count():try to suspend wakelock\n");
 				if (g_is_print_active_locks_worker_init) {
 					schedule_delayed_work(&print_active_locks_work, 0);
 				}
 			}
-/*[---]Debug for active wakelock before entering suspend*/
+//ASUS_BSP --- Debug for active wakelock before entering suspend
 			schedule();
 		}
 		finish_wait(&wakeup_count_wait_queue, &wait);
@@ -1022,8 +1035,9 @@ void pm_wakep_autosleep_enabled(bool set)
 {
 	struct wakeup_source *ws;
 	ktime_t now = ktime_get();
+	int srcuidx;
 
-	rcu_read_lock();
+	srcuidx = srcu_read_lock(&wakeup_srcu);
 	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
 		spin_lock_irq(&ws->lock);
 		if (ws->autosleep_enabled != set) {
@@ -1037,7 +1051,7 @@ void pm_wakep_autosleep_enabled(bool set)
 		}
 		spin_unlock_irq(&ws->lock);
 	}
-	rcu_read_unlock();
+	srcu_read_unlock(&wakeup_srcu, srcuidx);
 }
 #endif /* CONFIG_PM_AUTOSLEEP */
 
@@ -1079,7 +1093,7 @@ static int print_wakeup_source_stats(struct seq_file *m,
 		active_time = ktime_set(0, 0);
 	}
 
-	seq_printf(m, "%-12s\t%lu\t\t%lu\t\t%lu\t\t%lu\t\t%lld\t\t%lld\t\t%lld\t\t%lld\t\t%lld\n",
+	seq_printf(m, "%-32s\t%lu\t\t%lu\t\t%lu\t\t%lu\t\t%lld\t\t%lld\t\t%lld\t\t%lld\t\t%lld\n",
 		   ws->name, active_count, ws->event_count,
 		   ws->wakeup_count, ws->expire_count,
 		   ktime_to_ms(active_time), ktime_to_ms(total_time),
@@ -1098,22 +1112,23 @@ static int print_wakeup_source_stats(struct seq_file *m,
 static int wakeup_sources_stats_show(struct seq_file *m, void *unused)
 {
 	struct wakeup_source *ws;
+	int srcuidx;
 
-	seq_puts(m, "name\t\tactive_count\tevent_count\twakeup_count\t"
+	seq_puts(m, "name\t\t\t\t\tactive_count\tevent_count\twakeup_count\t"
 		"expire_count\tactive_since\ttotal_time\tmax_time\t"
 		"last_change\tprevent_suspend_time\n");
 
-	rcu_read_lock();
+	srcuidx = srcu_read_lock(&wakeup_srcu);
 	list_for_each_entry_rcu(ws, &wakeup_sources, entry)
 		print_wakeup_source_stats(m, ws);
-	rcu_read_unlock();
+	srcu_read_unlock(&wakeup_srcu, srcuidx);
 
 	print_wakeup_source_stats(m, &deleted_ws);
 
 	return 0;
 }
 
-/*[+++]Debug for active wakelock before entering suspend */
+//ASUS_BSP +++ Debug for active wakelock before entering suspend
 extern int pmsp_flag; /* kernel/kernel/power/suspend.c */
 extern void pmsp_print(void); /* /kernel/kernel/power/autosleep.c */
 extern void print_pm_cpuinfo(void);   /* dump cpuinfo defined kernel/kernel/power/autosleep.c */
@@ -1147,7 +1162,8 @@ void print_active_locks(void)
     return;
 }
 EXPORT_SYMBOL(print_active_locks);
-/*[---]Debug for active wakelock before entering suspend */
+//ASUS_BSP --- Debug for active wakelock before entering suspend
+
 static int wakeup_sources_stats_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, wakeup_sources_stats_show, NULL);
@@ -1167,8 +1183,10 @@ static int __init wakeup_sources_debugfs_init(void)
 			S_IRUGO, NULL, NULL, &wakeup_sources_stats_fops);
 	return 0;
 }
+
 postcore_initcall(wakeup_sources_debugfs_init);
 
+//ASUS_BSP +++
 void print_active_locks_worker(struct work_struct *work)
 {
 	ASUSEvtlog("[PM] try to suspend wakelock\n");
@@ -1182,4 +1200,4 @@ static int __init print_active_locks_worker_init(void)
 	return 0;
 }
 postcore_initcall(print_active_locks_worker_init);
-
+//ASUS_BSP ---
