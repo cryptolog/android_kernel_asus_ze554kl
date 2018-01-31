@@ -730,7 +730,8 @@ static const struct apsd_result *smblib_update_usb_type(struct smb_charger *chg)
 			chg->real_charger_type == POWER_SUPPLY_TYPE_USB)){
 			type =3;
 			chg->real_charger_type = apsd_result->pst;
-			chg->usb_psy_desc.type = apsd_result->pst;			
+			//WeiYu: this may cause healthd unknown power supply type, so remove assign desc
+			//chg->usb_psy_desc.type = apsd_result->pst;			
 		
 		}else{
 			type =4; 
@@ -1844,7 +1845,6 @@ int smblib_get_prop_batt_status(struct smb_charger *chg,
 		val->intval = POWER_SUPPLY_STATUS_FULL;
 		break;
 	case DISABLE_CHARGE:
-		if (asus_adapter_detecting_flag) {
 			if (fg_batt_id_ready && g_fgChip != NULL && smbchg_dev != NULL) {
 				mutex_lock(&g_fgChip->charge_status_lock);
 				if (g_fgChip->charge_full && !gauge_get_prop) {
@@ -1878,10 +1878,7 @@ int smblib_get_prop_batt_status(struct smb_charger *chg,
 				printk("[BAT][CHG] Batt_status = NOT_CHARGING\n");
 				val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
 			}
-		} else {
-			printk("[BAT][CHG] Batt_status = NOT_CHARGING\n");
-			val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
-		}
+
 		break;
 	default:
 		printk("[BAT][CHG] Batt_status = UNKNOWN\n");
@@ -4328,7 +4325,8 @@ set_current:
 		CHG_DBG_E("%s: Failed to set USBIN_OPTIONS_1_CFG_REG\n", __func__);
 
 	// bsp WeiYu: WA for non-legacy 1.5A current fail on Titan O
-	if(!(!LEGACY_CABLE_FLAG && UFP_FLAG==2)){
+	// remove WA due to charging icon error
+	//if(!(!LEGACY_CABLE_FLAG && UFP_FLAG==2)){
 		
 		CHG_DBG("%s: Rerun APSD 2nd\n", __func__);
 		rc = smblib_masked_write(smbchg_dev, CMD_APSD_REG, APSD_RERUN_BIT, APSD_RERUN_BIT);
@@ -4336,7 +4334,7 @@ set_current:
 			CHG_DBG_E("%s: Failed to set CMD_APSD_REG\n", __func__);
 
 		msleep(1000);
-	}
+	//}
 //Set current:
 	CHG_DBG("%s: ASUS_ADAPTER_ID = %s, setting mA = 0x%x\n", __func__, asus_id[ASUS_ADAPTER_ID], usb_max_current);
 

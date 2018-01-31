@@ -750,7 +750,7 @@ static ssize_t asus_boe_enable_glove(struct synaptics_rmi4_data *rmi4_data)
 	if (retval < 0)
 		return -EINVAL;
 
-	f12_2d_ctrl15[0] = 0x54;
+	f12_2d_ctrl15[0] = 0x31;
 
 	retval = synaptics_rmi4_reg_write(rmi4_data,0x0018,f12_2d_ctrl15,1);
 	if (retval < 0)
@@ -811,7 +811,7 @@ static ssize_t asus_boe_disable_glove(struct synaptics_rmi4_data *rmi4_data)
 	if (retval < 0)
 		return -EINVAL;
 
-	f12_2d_ctrl15[0] = 0x54;
+	f12_2d_ctrl15[0] = 0x31;
 
 	retval = synaptics_rmi4_reg_write(rmi4_data,0x0018,f12_2d_ctrl15,1);
 	if (retval < 0)

@@ -2862,12 +2862,13 @@ static irqreturn_t usb_temp_alert_interrupt(int irq, void *dev_id)
 	usb_alert_flag = status;
 
 	if (status == 1) {
-		if (usb_otg_present)
+		if (usb_otg_present){
 			switch_set_state(&usb_alert_dev, THM_ALERT_WITH_AC);
+			smblib_set_usb_suspend(smbchg_dev, 1);
+		}
 		else		
 			switch_set_state(&usb_alert_dev, THM_ALERT_NO_AC);	
 		
-		rc = smblib_set_usb_suspend(smbchg_dev, 1);
 		rc = smblib_masked_write(smbchg_dev, CMD_OTG_REG, OTG_EN_BIT, 0);
 		if (rc < 0)
 			dev_err(smbchg_dev->dev, "Couldn't set CMD_OTG_REG rc=%d\n", rc);
@@ -2875,7 +2876,6 @@ static irqreturn_t usb_temp_alert_interrupt(int irq, void *dev_id)
 	} else {
 		switch_set_state(&usb_alert_dev, THM_ALERT_NONE);
 		rc = smblib_set_usb_suspend(smbchg_dev, 0);
-		rc = smblib_masked_write(smbchg_dev, CMD_OTG_REG, OTG_EN_BIT, 1);
 		if (rc < 0)
 			dev_err(smbchg_dev->dev, "Couldn't set CMD_OTG_REG rc=%d\n", rc);		
 		CHG_DBG("%s: usb_temp_alert_cancel, enable charger and otg\n", __func__);
