@@ -136,7 +136,7 @@ static char* asus_get_emmc_health(struct mmc_card *card)
 static char* asus_get_emmc_total_size(struct mmc_card *card)
 {
 	BUG_ON(!card);
- 
+
 	return card->mmc_total_size;
 }
 //ASUS_BSP --- Deeo "add eMMC total size for AMAX"
@@ -492,7 +492,9 @@ static int mmc_decode_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		if (card->ext_csd.sectors > (2u * 1024 * 1024 * 1024) / 512)
 			mmc_card_set_blockaddr(card);
 //ASUS_BSP Deeo : add eMMC total size for AMAX +++
-		if(card->ext_csd.sectors > 80000000)
+ 		if(card->ext_csd.sectors > 210000000)
+ 			sprintf(card->mmc_total_size, "128");
+		else if(card->ext_csd.sectors > 80000000)
 			sprintf(card->mmc_total_size, "64");
 		else if(card->ext_csd.sectors > 50000000)
 			sprintf(card->mmc_total_size, "32");
@@ -785,7 +787,7 @@ static int mmc_decode_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		card->ext_csd.enhanced_rpmb_supported =
 			(card->ext_csd.rel_param &
 			 EXT_CSD_WR_REL_PARAM_EN_RPMB_REL_WR);
-		//ASUS_BSP Deeo : add for life time of eMMC +++ 
+		//ASUS_BSP Deeo : add for life time of eMMC +++
 		card->ext_csd.pre_eol_info = ext_csd[EXT_CSD_PRE_EOL_INFO];
 		card->ext_csd.device_life_time[0] = ext_csd[EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_A];
 		card->ext_csd.device_life_time[1] = ext_csd[EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_B];
@@ -1936,11 +1938,11 @@ static void mmc_get_manf(unsigned int id, char *manf)
 	case 0x90:
 		strcpy(manf, "HYNIX");
 	break;
-	
+
 	case 0x45:
 		strcpy(manf, "SANDISK");
 	break;
-	
+
 	case 0x11:
 		strcpy(manf, "TOSHIBA");
 	break;
@@ -1993,7 +1995,7 @@ static void mmc_dump_status(struct mmc_card *card, u8 *ext_csd)
 
 	ASUSEvtlog("%s", mmc_status);
 }
-	
+
 static int mmc_check_status(struct mmc_card *card)
 {
 	int err = 0;
@@ -2105,7 +2107,7 @@ reinit:
 		memcpy(card->raw_cid, cid, sizeof(card->raw_cid));
 		host->card = card;
 		card->reboot_notify.notifier_call = mmc_reboot_notify;
-		
+
 //ASUS_BSP +++ Gavin_Chang "mmc cmd statistics"
 		card->cmd_stats = kzalloc(sizeof(struct mmc_cmd_stats), GFP_KERNEL);
 		if (!card->cmd_stats) {
