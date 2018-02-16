@@ -84,7 +84,7 @@ bool fg_batt_id_ready = 0;
 int LED_mask_not_chg=0;
 extern int BR_countrycode;
 //ASUS BSP : Add variables ---
-//extern void focal_usb_detection(bool plugin);		//ASUS BSP Nancy : notify touch cable in +++
+extern void focal_usb_detection(bool plugin);		//ASUS BSP Nancy : notify touch cable in +++
 
 extern struct fg_chip * g_fgChip;	//ASUS BSP : guage +++
 extern int gauge_get_prop;
@@ -2994,7 +2994,8 @@ int smblib_set_prop_pd_active(struct smb_charger *chg,
 	int rc;
 	bool orientation, sink_attached, hvdcp;
 	u8 stat;
-
+	static bool scheduled = false;
+	
 	if (!get_effective_result(chg->pd_allowed_votable))
 		return -EINVAL;
 
@@ -3076,9 +3077,24 @@ int smblib_set_prop_pd_active(struct smb_charger *chg,
 		 * and data could be interrupted. Non-legacy DCP could also draw
 		 * more, but it may impact compliance.
 		 */
+		 /*  WeiYu ++ typeC 1.5A COS and car charger issue
+			make COS/MOS run legacy WA once, for
+			COS: typeC 1.5/3A legacy error
+			MOS: scnario transition fail, such as COS->MOS typeC 1.5/3A legacy error
+			[concern] should check impact on non-legacy cable
+			[history] if always run this WA, car charger in COS will 
+					in vbus drop&up <-> run WA loop
+		 */
 		sink_attached = chg->typec_status[3] & UFP_DFP_MODE_STATUS_BIT;
 		if (!chg->typec_legacy_valid && !sink_attached && hvdcp)
 			schedule_work(&chg->legacy_detection_work);
+		// WeiYu ++ else if for typeC 1.5A COS issue
+		else if(!chg->typec_legacy_valid && !sink_attached &&  !scheduled){
+			schedule_work(&chg->legacy_detection_work);
+			scheduled = true;
+			CHG_DBG("asus run legacy once \n");
+		}
+
 	}
 
 	smblib_update_usb_type(chg);
@@ -3557,7 +3573,7 @@ void asus_typec_removal_function(struct smb_charger *chg)
 	asus_flow_done_flag = 0;
 	asus_smblib_relax(smbchg_dev);
 
-	//focal_usb_detection(false);		//ASUS BSP Nancy : notify touch cable out +++
+	focal_usb_detection(false);		//ASUS BSP Nancy : notify touch cable out +++
 }
 
 /************************
@@ -4218,8 +4234,9 @@ void asus_adapter_adc_work(struct work_struct *work)
 	msleep(5);
 
 	us5587_CHG_TYPE_judge(smbchg_dev);
-	
-	if((HVDCP_FLAG ==0)&&(UFP_FLAG ==3||UFP_FLAG ==2)){
+
+	//WeiYu ++ disable this part by 0&& due to Vbus will falling
+	if(0&&(HVDCP_FLAG ==0)&&(UFP_FLAG ==3||UFP_FLAG ==2)){
 	mutex_lock(&smbchg_dev->lock);
 
 	rc = smblib_masked_write(smbchg_dev, TYPE_C_INTRPT_ENB_SOFTWARE_CTRL_REG,
@@ -4244,6 +4261,22 @@ void asus_adapter_adc_work(struct work_struct *work)
 	}	
 
 set_current:
+	/* WeiYu ++ typeC 1.5A COS and car charger issue
+		revise LEGACY_CABLE_FLAG no matter COS or MOS
+		[concern] N/A
+		[history] run 1.5A COS legacy WA and update LEGACY_CABLE_FLAG here
+	*/
+	//WeiYu ++ for 1.5A COS issue
+	if((HVDCP_FLAG ==0)&&(UFP_FLAG ==3||UFP_FLAG ==2)){
+
+		rc = smblib_read(smbchg_dev, TYPE_C_STATUS_5_REG, &legacy_cable_reg);
+		if (rc < 0)
+			CHG_DBG_E("%s: redo in charger mode but Couldn't read TYPE_C_STATUS_5_REG\n", __func__);
+		LEGACY_CABLE_FLAG = legacy_cable_reg & TYPEC_LEGACY_CABLE_STATUS_BIT;
+		CHG_DBG(" rerun legacy for QC2/3: %d\n",LEGACY_CABLE_FLAG);
+
+	}
+	
 	switch (ASUS_ADAPTER_ID) {
 	case ASUS_750K:
 		if (HVDCP_FLAG == 0) {
@@ -4325,8 +4358,7 @@ set_current:
 		CHG_DBG_E("%s: Failed to set USBIN_OPTIONS_1_CFG_REG\n", __func__);
 
 	// bsp WeiYu: WA for non-legacy 1.5A current fail on Titan O
-	// remove WA due to charging icon error
-	//if(!(!LEGACY_CABLE_FLAG && UFP_FLAG==2)){
+	if(!(!LEGACY_CABLE_FLAG && UFP_FLAG==2)){
 		
 		CHG_DBG("%s: Rerun APSD 2nd\n", __func__);
 		rc = smblib_masked_write(smbchg_dev, CMD_APSD_REG, APSD_RERUN_BIT, APSD_RERUN_BIT);
@@ -4334,7 +4366,7 @@ set_current:
 			CHG_DBG_E("%s: Failed to set CMD_APSD_REG\n", __func__);
 
 		msleep(1000);
-	//}
+	}
 //Set current:
 	CHG_DBG("%s: ASUS_ADAPTER_ID = %s, setting mA = 0x%x\n", __func__, asus_id[ASUS_ADAPTER_ID], usb_max_current);
 
@@ -4756,7 +4788,7 @@ void smblib_usb_plugin_locked(struct smb_charger *chg)
 			else
 				schedule_delayed_work(&smbchg_dev->asus_chg_flow_work, msecs_to_jiffies(12000));
 		}
-		//focal_usb_detection(true);	//ASUS BSP Nancy : notify touch cable in +++
+		focal_usb_detection(true);	//ASUS BSP Nancy : notify touch cable in +++
 	} else {
 		//rc = gpio_direction_output(global_gpio->USB_LID_EN, 1);
 		//if (rc)

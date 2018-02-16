@@ -382,7 +382,7 @@ status = "okay";
 	qcom,fg-jeita-thresholds = <0 10 50 60>;
 	qcom,battery-thermal-coefficients = [9d 50 ff];
 	qcom,fg-cutoff-voltage = <3400>; //ASUS BSP : LiJen Battery
-	qcom,fg-empty-voltage = <3000>; //ASUS BSP : LiJen Battery
+	qcom,fg-empty-voltage = <2800>; //ASUS BSP : LiJen Battery
 };
 
 &i2c_2 {

@@ -94,6 +94,7 @@ extern int g_force_ramdump;
 #define QPNP_PON_WARM_RESET_REASON2(pon)	((pon)->base + 0xB)
 #define QPNP_PON_OFF_REASON(pon)		((pon)->base + 0xC7)
 #define QPNP_FAULT_REASON1(pon)			((pon)->base + 0xC8)
+#define QPNP_FAULT_REASON2(pon)			((pon)->base + 0xC9)
 #define QPNP_S3_RESET_REASON(pon)		((pon)->base + 0xCA)
 #ifdef CONFIG_PON_EVT_LOG
 #define QPNP_SOFT_RESET_REASON1(pon)		((pon)->base + 0xCB)
@@ -2462,17 +2463,29 @@ static int read_gen2_pon_off_reason(struct qpnp_pon *pon, u16 *reason,
 static int read_pon_registers(struct qpnp_pon *pon, u16 *on_poff_reason, u8 *pon_off_reason,u16 *fault_reason,u16 *s3_reset_sw_reset_reason)
 {
 	int rc;
-	int buf[2];
+	int buf[2],reg;
 
 	// on & poff reason
-	rc = regmap_bulk_read(pon->regmap,
+	rc = regmap_read(pon->regmap,
 			QPNP_ON_POFF_REASON1(pon),
-			buf, 2);
+			&reg);
 	if (rc) {
-		dev_err(&pon->pdev->dev, "Unable to read ON & POFF_REASON1 reg rc:%d\n",
+		dev_err(&pon->pdev->dev, "Unable to read ON & QPNP_ON_POFF_REASON1 reg rc:%d\n",
 			rc);
 		return rc;
 	}
+       buf[0] = reg;
+
+	rc = regmap_read(pon->regmap,
+			QPNP_POFF_REASON1(pon),
+			&reg);
+	if (rc) {
+		dev_err(&pon->pdev->dev, "Unable to read ON & QPNP_POFF_REASON1 reg rc:%d\n",
+			rc);
+		return rc;
+	}
+       buf[1] = reg;
+
 	*on_poff_reason = (u8)buf[0] | (u16)(buf[1] << 8);
 
 	// pon off reason
@@ -2487,14 +2500,26 @@ static int read_pon_registers(struct qpnp_pon *pon, u16 *on_poff_reason, u8 *pon
 	*pon_off_reason = (u8)buf[0];
 
 	// fault reason
-	rc = regmap_bulk_read(pon->regmap,
+	rc = regmap_read(pon->regmap,
 			QPNP_FAULT_REASON1(pon),
-			buf, 2);
+			&reg);
 	if (rc) {
-		dev_err(&pon->pdev->dev, "Unable to read FAULT_REASON regs rc:%d\n",
+		dev_err(&pon->pdev->dev, "Unable to read QPNP_FAULT_REASON1 regs rc:%d\n",
 			rc);
 		return rc;
 	}
+	buf[0] = reg;
+
+	rc = regmap_read(pon->regmap,
+			QPNP_FAULT_REASON2(pon),
+			&reg);
+	if (rc) {
+		dev_err(&pon->pdev->dev, "Unable to read QPNP_FAULT_REASON2 regs rc:%d\n",
+			rc);
+		return rc;
+	}
+	buf[1] = reg;
+
 	*fault_reason = (u8)buf[0] | (u16)(buf[1] << 8);
 
 	// 8CA

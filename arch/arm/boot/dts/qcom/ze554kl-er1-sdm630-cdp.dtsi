@@ -383,6 +383,6 @@ status = "okay";
 &pm660_fg {
 	qcom,battery-data = <&mtp_batterydata>;
 	qcom,fg-cutoff-voltage = <3400>; //ASUS BSP LiJen
-	qcom,fg-empty-voltage = <3000>; //ASUS BSP : LiJen Battery
+	qcom,fg-empty-voltage = <2800>; //ASUS BSP : LiJen Battery
 };
 //ASUS BSP : LiJen Battery ---

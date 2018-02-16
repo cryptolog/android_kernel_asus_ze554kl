@@ -414,6 +414,8 @@ static enum power_supply_property smb2_usb_props[] = {
 	POWER_SUPPLY_PROP_SDP_CURRENT_MAX,
 };
 
+extern bool asus_adapter_detecting_flag;
+
 static int smb2_usb_get_prop(struct power_supply *psy,
 		enum power_supply_property psp,
 		union power_supply_propval *val)
@@ -442,6 +444,17 @@ static int smb2_usb_get_prop(struct power_supply *psy,
 			val->intval = 1;
 		if (chg->real_charger_type == POWER_SUPPLY_TYPE_UNKNOWN)
 			val->intval = 0;
+
+		/* WeiYu ++
+			keep reporting online while under ac detecting
+			[concern] N/A, similar WA to N 
+			[history] prop online logic are difference between N/O,
+			hence O need add this section
+		*/
+		if (val->intval == 0 && asus_adapter_detecting_flag){
+			val->intval = 1;		
+			CHG_DBG("force reporting online due to under AC detecting flow\n");
+		}
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 		rc = smblib_get_prop_usb_voltage_max(chg, val);
@@ -2853,13 +2866,18 @@ static irqreturn_t usb_temp_alert_interrupt(int irq, void *dev_id)
 	int rc;
 	int usb_otg_present;
 	u8 reg;
-
+	bool skip= false;
 
 	CHG_DBG("%s: Get USB_Thermal_Status : %d\n", __func__, status);
 	rc = smblib_read(smbchg_dev, TYPE_C_STATUS_4_REG, &reg);
 	usb_otg_present = reg & CC_ATTACHED_BIT;
-	
-	usb_alert_flag = status;
+
+	//let COS keep discharging while alert dismiss
+	if(g_Charger_mode && usb_alert_flag==1)
+		skip = true;
+
+	if(!skip)
+		usb_alert_flag = status;
 
 	if (status == 1) {
 		if (usb_otg_present){
@@ -2872,13 +2890,18 @@ static irqreturn_t usb_temp_alert_interrupt(int irq, void *dev_id)
 		rc = smblib_masked_write(smbchg_dev, CMD_OTG_REG, OTG_EN_BIT, 0);
 		if (rc < 0)
 			dev_err(smbchg_dev->dev, "Couldn't set CMD_OTG_REG rc=%d\n", rc);
-		CHG_DBG("%s: usb_temp_alert_interrupt, suspend charger and otg\n", __func__);
+			CHG_DBG("%s: switch %d, cable %d\n", __func__, status, usb_otg_present);
 	} else {
-		switch_set_state(&usb_alert_dev, THM_ALERT_NONE);
-		rc = smblib_set_usb_suspend(smbchg_dev, 0);
-		if (rc < 0)
-			dev_err(smbchg_dev->dev, "Couldn't set CMD_OTG_REG rc=%d\n", rc);		
-		CHG_DBG("%s: usb_temp_alert_cancel, enable charger and otg\n", __func__);
+		if (usb_otg_present){
+			switch_set_state(&usb_alert_dev, THM_ALERT_NONE);
+			CHG_DBG("%s: switch %d, cable %d\n", __func__, status, usb_otg_present);
+		} else {
+			switch_set_state(&usb_alert_dev, THM_ALERT_NONE);
+			rc = smblib_set_usb_suspend(smbchg_dev, 0);
+			if (rc < 0)
+				dev_err(smbchg_dev->dev, "Couldn't set CMD_OTG_REG rc=%d\n", rc);		
+			CHG_DBG("%s: switch %d, cable %d, enable charger \n", __func__, status, usb_otg_present);
+		}
 	}
 
 	return IRQ_HANDLED;
