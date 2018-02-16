@@ -828,9 +828,9 @@ KBUILD_CPPFLAGS += -DASUS_USER_BUILD=1
 endif
 
 # Add ASUS build Project to KBUILD_CPPFLAGS
-ifeq ($(ASUS_BUILD_PROJECT),ZE554KL)
+#ifeq ($(ASUS_BUILD_PROJECT),ZE554KL)
 KBUILD_CPPFLAGS += -DASUS_ZE554KL_PROJECT=1
-endif 
+#endif 
 
 # Use --build-id when available.
 LDFLAGS_BUILD_ID = $(patsubst -Wl$(comma)%,%,\
