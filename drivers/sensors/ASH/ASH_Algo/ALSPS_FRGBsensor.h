@@ -45,7 +45,7 @@
  * @LIGHT_TURNON_DELAY_TIME : After light sensor turn on 250ms, 
  * driver will cat first correct adc/lux value.
  */
-#define LIGHT_TURNON_DELAY_TIME			(250)
+#define LIGHT_TURNON_DELAY_TIME			(10)
 #define PROXIMITY_TURNON_DELAY_TIME	(50)
 
 /**

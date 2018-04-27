@@ -22,6 +22,9 @@
 #include "../codecs/sdm660_cdc/msm-analog-cdc.h"
 #include "../codecs/wsa881x.h"
 
+/* ASUS_BSP : For SPK/RCV always mute due to clock disable failed during ADSP restart issue QTI_CASE_03337599 */
+#include <sound/q6core.h>
+
 #define DRV_NAME "sdm660-asoc-snd"
 
 #define MSM_INT_DIGITAL_CODEC "msm-dig-codec"
@@ -2589,7 +2592,10 @@ void msm_mi2s_snd_shutdown(struct snd_pcm_substream *substream)
 		if (ret < 0) {
 			pr_err("%s:clock disable failed for MI2S (%d); ret=%d\n",
 				__func__, index, ret);
-			mi2s_intf_conf[index].ref_cnt++;
+/* ASUS_BSP : For SPK/RCV always mute due to clock disable failed during ADSP restart issue QTI_CASE_03337599 */
+			if (q6core_is_adsp_ready())
+				mi2s_intf_conf[index].ref_cnt++;
+/* ASUS_BSP --- */
 		}
 		if (mi2s_intf_conf[index].msm_is_ext_mclk) {
 			mi2s_mclk[index].enable = 0;

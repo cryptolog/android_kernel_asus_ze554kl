@@ -625,6 +625,17 @@
 			qcom,fg-esr-timer-asleep = <256 256>;
 			qcom,fg-esr-timer-charging = <0 96>;
 			qcom,cycle-counter-en;
+
+//ASUS_BSP +++
+			qcom,fg-chg-term-current = <100>;
+			qcom,fg-sys-term-current = <(-150)>;
+			qcom,hold-soc-while-full;
+			qcom,fg-force-load-profile;
+
+			qcom,fg-jeita-thresholds = <0 10 50 60>;
+			qcom,fg-jeita-hyst-temp = <3>;
+//ASUS_BSP ---
+
 			status = "okay";
 
 			qcom,fg-batt-soc@4000 {

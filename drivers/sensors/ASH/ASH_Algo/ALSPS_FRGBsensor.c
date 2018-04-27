@@ -650,6 +650,7 @@ static void light_polling_lux(struct work_struct *work)
 {
 	int adc = 0;
 	int lux = 0;
+	static int count = 0;
 
 	/* Check Hardware Support First */
 	if(ALSPS_FRGB_hw_client->mlsensor_hw->light_hw_get_adc == NULL) {
@@ -657,15 +658,21 @@ static void light_polling_lux(struct work_struct *work)
 	}
 
 mutex_lock(&g_alsps_frgb_lock);
+
 	if(g_als_data->HAL_switch_on == true) {
-		/* Light Sensor Report the first real event*/
-
 		adc = ALSPS_FRGB_hw_client->mlsensor_hw->light_hw_get_adc();
-
-		lux = light_get_lux(adc);
-		log("[Polling] Light Sensor Report lux : %d (adc = %d)\n", lux, adc);
-		lsensor_report_lux(lux);
+		if ((0 == adc) && (count < 25)) {
+			log("[Polling] Light Sensor retry for get adc\n");
+			queue_delayed_work(ALSPS_FRGB_delay_workqueue, &light_polling_lux_work, msecs_to_jiffies(LIGHT_TURNON_DELAY_TIME));
+			count++;
+		} else {
+			count = 0;
+			lux = light_get_lux(adc);
+			log("[Polling] Light Sensor Report lux : %d (adc = %d)\n", lux, adc);
+			lsensor_report_lux(lux);
+		}
 	}
+	
 mutex_unlock(&g_alsps_frgb_lock);
 }
 
