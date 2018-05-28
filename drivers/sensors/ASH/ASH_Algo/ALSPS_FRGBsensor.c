@@ -1919,10 +1919,11 @@ static void proximity_work(int state)
 			log("[ISR] Proximity Detect Object Away. (adc = %d)\n", adc);
 			psensor_report_abs(PSENSOR_REPORT_PS_AWAY);
 			g_ps_data->event_counter++;	/* --- For stress test debug --- */
-			audio_mode = get_audiomode();
-			if (0 == audio_mode || 2 == audio_mode || 3 == audio_mode) {
-				ftxxxx_disable_touch(false);
-			}
+			//audio_mode = get_audiomode();
+			//if (0 == audio_mode || 2 == audio_mode || 3 == audio_mode) {
+			//	ftxxxx_disable_touch(false);
+			//}
+			ftxxxx_disable_touch(false);
 		} else if (ALSPS_INT_PS_CLOSE == state) {
 			log("[ISR] Proximity Detect Object Close. (adc = %d)\n", adc);		
 			psensor_report_abs(PSENSOR_REPORT_PS_CLOSE);

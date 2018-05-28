@@ -415,6 +415,7 @@ static enum power_supply_property smb2_usb_props[] = {
 };
 
 extern bool asus_adapter_detecting_flag;
+extern bool is_ubatlife_dischg(void); //ASUS_BSP LiJen
 
 static int smb2_usb_get_prop(struct power_supply *psy,
 		enum power_supply_property psp,
@@ -433,7 +434,7 @@ static int smb2_usb_get_prop(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
 		rc = smblib_get_prop_usb_online(chg, val);
-		if (!val->intval)
+		if (!val->intval|| is_ubatlife_dischg()) //ASUS_BSP LiJen
 			break;
 
 		if ((chg->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_DEFAULT ||

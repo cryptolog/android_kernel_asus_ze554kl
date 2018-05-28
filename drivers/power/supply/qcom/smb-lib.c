@@ -83,6 +83,13 @@ extern bool smartchg_stop_flag;
 bool fg_batt_id_ready = 0;
 int LED_mask_not_chg=0;
 extern int BR_countrycode;
+
+bool g_ubatterylife_enable_flag = 0;
+
+#define	UBATLIFE_DISCHG_THD		60
+#define	UBATLIFE_CHG_THD		58
+int ubatlife_chg_status = UBATLIFE_CHG_THD;
+
 //ASUS BSP : Add variables ---
 extern void focal_usb_detection(bool plugin);		//ASUS BSP Nancy : notify touch cable in +++
 
@@ -153,6 +160,13 @@ void asus_smblib_relax(struct smb_charger *chg)
 	CHG_DBG("%s: ASUS set smblib_relax\n", __func__);
 	wake_unlock(&asus_chg_lock);
 }
+
+//ASUS_BSP +++
+bool is_ubatlife_dischg(void)
+{
+	return (ubatlife_chg_status == UBATLIFE_DISCHG_THD) && g_ubatterylife_enable_flag ? true: false;
+}
+//ASUS_BSP ---
 
 static bool is_secure(struct smb_charger *chg, int addr)
 {
@@ -650,6 +664,12 @@ static int smblib_request_dpdm(struct smb_charger *chg, bool enable)
 {
 	int rc = 0;
 
+	if(chg->pr_swap_in_progress){
+		CHG_DBG("%s  skip\n",__func__);
+		return rc;
+
+	}
+	
 	/* fetch the DPDM regulator */
 	if (!chg->dpdm_reg && of_get_property(chg->dev->of_node,
 				"dpdm-supply", NULL)) {
@@ -1749,6 +1769,23 @@ int smblib_get_prop_batt_capacity(struct smb_charger *chg,
 	return rc;
 }
 
+//ASUS_BSP +++ LiJen
+bool temp_ubatlife_specified(union power_supply_propval *val){
+
+			bool rc =false;
+
+			if(is_ubatlife_dischg()){
+				val->intval = POWER_SUPPLY_STATUS_CHARGING;
+				//strcpy(note,"(modified by ubatlife)");
+				rc = true;
+			}
+			else rc = false;
+
+			return rc;
+			
+}
+//ASUS_BSP --- LiJen
+
 int smblib_get_prop_batt_status(struct smb_charger *chg,
 				union power_supply_propval *val)
 {
@@ -1868,7 +1905,10 @@ int smblib_get_prop_batt_status(struct smb_charger *chg,
 						val->intval = POWER_SUPPLY_STATUS_THERMAL_ALERT;
 					}
 				
-				} else {			
+				} 
+				else if (temp_ubatlife_specified(val)){
+						printk("[BAT][CHG] Batt_status = CHARGING (modified by ubat)\n");
+				}else {			
 					printk("[BAT][CHG] Batt_status = NOT_CHARGING\n");
 					val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
 				}
@@ -1910,8 +1950,20 @@ int smblib_get_prop_batt_status(struct smb_charger *chg,
 	qnovo_en = (bool)(pt_en_cmd & QNOVO_PT_ENABLE_CMD_BIT);
 
 	/* ignore stat7 when qnovo is enabled */
-	if (!qnovo_en && !stat)
+	if (!qnovo_en && !stat){
 		val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
+
+	//ASUS_BSP +++
+		if(g_ubatterylife_enable_flag == 1){
+			if(ubatlife_chg_status == UBATLIFE_CHG_THD)
+				val->intval = POWER_SUPPLY_STATUS_CHARGING;
+			if(ubatlife_chg_status == UBATLIFE_DISCHG_THD)
+				val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
+		}
+	//ASUS_BSP ---	
+		
+	}
+
 
 	return 0;
 }
@@ -2462,8 +2514,12 @@ int smblib_get_prop_usb_online(struct smb_charger *chg,
 
 	if (asus_adapter_detecting_flag)
 		val->intval = 1;
-	else if(g_Charger_mode && usb_alert_flag){
+	else if((g_Charger_mode && usb_alert_flag)
+		|| is_ubatlife_dischg()){
 		val->intval = usb_otg_present;
+		if(val->intval == 1){
+			CHG_DBG("force reporting online(%d) due to alert:%d, ubat:%d\n", usb_otg_present, usb_alert_flag, is_ubatlife_dischg());
+		}		
 	}
 	else
 		val->intval = (stat & USE_USBIN_BIT) &&
@@ -3820,6 +3876,62 @@ int demo_chg_status = DEMO_NON_CHG_THD;
 
 
 
+
+//ASUS_BSP +++
+#define CHGLimit_PATH "/cache/charger/CHGLimit"
+static bool check_ultrabatterylife_enable(void)
+{
+	struct file *fp = NULL;
+	mm_segment_t old_fs;
+	loff_t pos_lsts = 0;
+	char buf[8] = "";
+	int l_result = -1;
+
+	fp = filp_open(CHGLimit_PATH, O_RDONLY, 0);
+	if (IS_ERR_OR_NULL(fp)) {
+		//CHG_DBG_E("%s: open (%s) fail\n", __func__, CHGLimit_PATH);
+		return false;	/*No such file or directory*/
+	}
+
+	/*For purpose that can use read/write system call*/
+	old_fs = get_fs();
+	set_fs(KERNEL_DS);
+
+	vfs_read(fp,buf,6,&pos_lsts);
+
+	set_fs(old_fs);
+	filp_close(fp, NULL);
+
+	sscanf(buf, "%d", &l_result);
+	CHG_DBG("%s: %d",__func__, l_result);
+	
+	if(l_result == 1){
+		return true;
+	}else{
+		return false;
+	}
+}
+//ASUS_BSP 
+
+void update_ubatterylife_info(bool* dismiss){
+
+	bool prev_ubat_flag = g_ubatterylife_enable_flag;
+	g_ubatterylife_enable_flag = check_ultrabatterylife_enable(); 
+	if(prev_ubat_flag == g_ubatterylife_enable_flag)
+		return;
+
+	// handle ubatterylife dismiss
+	if(prev_ubat_flag){
+		*dismiss = true;
+		CHG_DBG("ultrabatterylife dismiss\n");
+
+	}
+
+	if(g_ubatterylife_enable_flag)
+		CHG_DBG("ultrabatterylife triggered\n");
+}
+
+
 void jeita_rule(void)
 {
 	static int state = JEITA_STATE_INITIAL;
@@ -3836,6 +3948,10 @@ void jeita_rule(void)
 	bool demo_app_state_flag = 0;
 	bool demo_stop_charging_flag = 0;
 
+	bool ubatlife_stop_charging_flag = 0;
+	//bool suspend_dismiss to handle ubat_flag from 1 to 0
+	bool suspend_dismiss =0;
+	
 	rc = smblib_write(smbchg_dev, JEITA_EN_CFG_REG, 0x10);
 	if (rc < 0)
 		CHG_DBG_E("%s: Failed to set JEITA_EN_CFG_REG\n", __func__);
@@ -3848,6 +3964,7 @@ void jeita_rule(void)
 	if (rc < 0)
 		CHG_DBG_E("%s: Couldn't read USBIN_CURRENT_LIMIT_CFG_REG\n", __func__);
 
+	update_ubatterylife_info(&suspend_dismiss);
 	bat_health = asus_get_batt_health();
 	bat_temp = asus_get_prop_batt_temp(smbchg_dev);
 	bat_volt = asus_get_prop_batt_volt(smbchg_dev);
@@ -3946,11 +4063,35 @@ void jeita_rule(void)
 				
 		}
 
-	}
+	}else if (g_ubatterylife_enable_flag) {
+		if(bat_capacity > UBATLIFE_DISCHG_THD)	// >60%
+			ubatlife_chg_status = UBATLIFE_DISCHG_THD;
+		else if(bat_capacity < UBATLIFE_CHG_THD)	// <58%
+			ubatlife_chg_status = UBATLIFE_CHG_THD;
+		else;
+		
+		if(ubatlife_chg_status == UBATLIFE_DISCHG_THD)
+			smblib_set_usb_suspend(smbchg_dev, true);
+		else
+			smblib_set_usb_suspend(smbchg_dev, false);
+		
+		if(ubatlife_chg_status == UBATLIFE_CHG_THD)
+			ubatlife_stop_charging_flag = false;
+		else				
+			ubatlife_stop_charging_flag = true;
+	/* WeiYu: suspend_dismiss' priority is lower than the following list:
+		demo_app_property_flag
+		usb_alert_flag
+
+	In the future,	if the list changes, NEED MORE LOGIC to before setting suspend_dismiss =1
+	*/	
+	}else if(suspend_dismiss){
+		smblib_set_usb_suspend(smbchg_dev, false);
+	}else;
 
 	
 //Add smart charge & demo app judgment +++
-	if (smartchg_stop_flag || demo_stop_charging_flag) {
+	if (smartchg_stop_flag || demo_stop_charging_flag|| ubatlife_stop_charging_flag) {
 		CHG_DBG("%s: Stop charging, smart = %d, demo = %d\n", __func__, smartchg_stop_flag, demo_stop_charging_flag);
 		charging_enable = EN_BAT_CHG_EN_COMMAND_FALSE;
 	}
