@@ -60,3 +60,6 @@ static bool g_debugMode;
 #define RGB_DBG_API(...)	if(g_debugMode)\
 							printk(KERN_INFO RGB_TAG __VA_ARGS__)
 /*---BSP David---*/
+
+#define rearRGB_POLLING_FIRST_RAW	(10)
+#define rearRGB_POLLING_TIME		(40)

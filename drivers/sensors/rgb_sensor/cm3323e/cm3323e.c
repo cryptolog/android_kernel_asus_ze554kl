@@ -97,6 +97,13 @@ EXPORT_SYMBOL(unlock_i2c_bus7);
 
 
 static struct mutex als_enable_mutex;
+
+static bool g_rearRgb_enabled = false;
+static struct workqueue_struct 		*Rear_RGB_delay_workqueue;
+static void rearRGB_polling_raw(struct work_struct *work);
+static 		DECLARE_DELAYED_WORK(rearRGB_polling_raw_work, rearRGB_polling_raw);
+#define RGB_DATA_NOT_READY_MAGIC_NUM 65534
+
 struct msm_rgb_sensor_vreg {
 	struct camera_vreg_t *cam_vreg;
 	void *data[CAM_VREG_MAX];
@@ -408,6 +415,11 @@ static int rgbSensor_setEnable(bool enabled)
 	if ((enabled && l_count == 0) || (!enabled && l_count == 1)) {
 		ret = rgbSensor_doEnable(enabled);
 		do_enabled = enabled;
+		g_rearRgb_enabled  = enabled;
+
+		if( true == g_rearRgb_enabled){
+				queue_delayed_work(Rear_RGB_delay_workqueue, &rearRGB_polling_raw_work, msecs_to_jiffies(rearRGB_POLLING_FIRST_RAW));
+		}
 	}
 	if (enabled) {
 		l_count++;
@@ -521,7 +533,11 @@ static int rgbSensor_setup(struct cm3323e_info *lpi)
 	int ret = 0;
  	uint16_t adc_data;
 
-	lpi->it_time = RGB_IT_160MS;
+	lpi->it_time = RGB_IT_40MS;
+	lpi->dataR = RGB_DATA_NOT_READY_MAGIC_NUM;
+	lpi->dataG = RGB_DATA_NOT_READY_MAGIC_NUM;
+	lpi->dataB = RGB_DATA_NOT_READY_MAGIC_NUM;
+	lpi->dataW = RGB_DATA_NOT_READY_MAGIC_NUM;  
 
 	// Enable CM3323E
 	ret = rgbSensor_setEnable(true);
@@ -1236,6 +1252,75 @@ static void create_rgbSensor_w_proc_file(void)
 /*---BSP David proc rgbSensor_w Interface---*/
 #endif
 /*---BSP David ASUS Interface---*/
+static void polling_Rear_RGBvalue(void)
+{
+ 	uint16_t adc_data;
+	int dataI[ASUS_RGB_SENSOR_DATA_SIZE];
+	int ret = 0;      
+    
+ 	ret = get_rgb_data(RGB_DATA_R, &adc_data, true);
+ 	if (ret < 0) {
+ 		RGB_DBG("%s: Eason flash\n", __func__);        
+ 		adc_data = RGB_DATA_NOT_READY_MAGIC_NUM;
+ 	}
+ 	dataI[0] = adc_data;
+ 	ret = get_rgb_data(RGB_DATA_G, &adc_data, true);
+ 	if (ret < 0) {
+ 		adc_data = RGB_DATA_NOT_READY_MAGIC_NUM;
+ 	}
+ 	dataI[1] = adc_data;
+ 	ret = get_rgb_data(RGB_DATA_B, &adc_data, true);
+ 	if (ret < 0) {
+ 		adc_data = RGB_DATA_NOT_READY_MAGIC_NUM;
+ 	}
+ 	dataI[2] = adc_data;
+ 	ret = get_rgb_data(RGB_DATA_W, &adc_data, true);
+ 	if (ret < 0) {
+ 		adc_data = RGB_DATA_NOT_READY_MAGIC_NUM;
+ 	}
+ 	dataI[3] = adc_data;
+ 	dataI[4] = 1;
+	
+ 	if(g_rgb_status.wait_after_setit) {
+ 		do_gettimeofday(&it_set_now);
+
+ 		if(!is_it_time_passed(it_set_begin, it_set_now)) {
+ 		 		RGB_DBG("%s: Integration time is not ready yet, get old RGBW data\n", __func__);
+ 		 		//dataI[0] = cm_lp_info->dataR;
+ 		 		//dataI[1] = cm_lp_info->dataG;
+ 		 		//dataI[2] = cm_lp_info->dataB;
+ 		 		//dataI[3] = cm_lp_info->dataW;
+ 		} else {
+ 		 		if( true == g_rearRgb_enabled){
+ 		 		        cm_lp_info->dataR = dataI[0];
+ 		 		        cm_lp_info->dataG = dataI[1];
+ 		 		        cm_lp_info->dataB = dataI[2];
+ 		 		        cm_lp_info->dataW = dataI[3];
+ 		 		        g_rgb_status.wait_after_setit = false;
+ 		 		}                
+ 		}
+ 	} else {
+ 		if( true == g_rearRgb_enabled){
+ 		    cm_lp_info->dataR = dataI[0];
+ 		    cm_lp_info->dataG = dataI[1];
+ 		    cm_lp_info->dataB = dataI[2];
+ 		    cm_lp_info->dataW = dataI[3];
+ 		}            
+ 	}
+ 	RGB_DBG("%s: cmd = DATA_READ_RGBW, dataR = %d, dataG = %d, dataB = %d, dataW = %d\n"
+					, __func__, cm_lp_info->dataR, cm_lp_info->dataG, cm_lp_info->dataB, cm_lp_info->dataW);    
+}
+
+
+static void rearRGB_polling_raw(struct work_struct *work)
+{
+       if( true == g_rearRgb_enabled)
+       {
+              polling_Rear_RGBvalue();
+              queue_delayed_work(Rear_RGB_delay_workqueue, &rearRGB_polling_raw_work, msecs_to_jiffies(rearRGB_POLLING_TIME));    
+       }     
+}
+
 
 static int rgbSensor_miscOpen(struct inode *inode, struct file *file)
 {
@@ -1251,6 +1336,12 @@ static int rgbSensor_miscOpen(struct inode *inode, struct file *file)
 static int rgbSensor_miscRelease(struct inode *inode, struct file *file)
 {
 	int ret = 0;
+
+	cm_lp_info->it_time = RGB_IT_40MS;
+	cm_lp_info->dataR = RGB_DATA_NOT_READY_MAGIC_NUM;
+	cm_lp_info->dataG = RGB_DATA_NOT_READY_MAGIC_NUM;
+	cm_lp_info->dataB = RGB_DATA_NOT_READY_MAGIC_NUM;
+	cm_lp_info->dataW = RGB_DATA_NOT_READY_MAGIC_NUM; 
 	ret = rgbSensor_setEnable(false);
 	RGB_DBG("%s: %d\n", __func__, ret);
 	return ret;
@@ -1261,7 +1352,6 @@ static long rgbSensor_miscIoctl(struct file *file, unsigned int cmd, unsigned lo
 	int ret = 0;
 	int dataI[ASUS_RGB_SENSOR_DATA_SIZE];
 	char dataS[ASUS_RGB_SENSOR_NAME_SIZE];
- 	uint16_t adc_data;
 	int l_debug_mode = 0;
 	static int log_filter = 0;
 	
@@ -1285,50 +1375,12 @@ static long rgbSensor_miscIoctl(struct file *file, unsigned int cmd, unsigned lo
 			}
 			break;
 		case ASUS_RGB_SENSOR_IOCTL_DATA_READ:
-			ret = get_rgb_data(RGB_DATA_R, &adc_data, true);
-			if (ret < 0) {
-				goto end;
-			}
-			dataI[0] = adc_data;
-			ret = get_rgb_data(RGB_DATA_G, &adc_data, true);
-			if (ret < 0) {
-				goto end;
-			}
-			dataI[1] = adc_data;
-			ret = get_rgb_data(RGB_DATA_B, &adc_data, true);
-			if (ret < 0) {
-				goto end;
-			}
-			dataI[2] = adc_data;
-			ret = get_rgb_data(RGB_DATA_W, &adc_data, true);
-			if (ret < 0) {
-				goto end;
-			}
-			dataI[3] = adc_data;
+			
+			dataI[0] = cm_lp_info->dataR;
+			dataI[1] = cm_lp_info->dataG;
+			dataI[2] = cm_lp_info->dataB;
+			dataI[3] = cm_lp_info->dataW;
 			dataI[4] = 1;
-	
-			if(g_rgb_status.wait_after_setit) {
-				do_gettimeofday(&it_set_now);
-
-				if(!is_it_time_passed(it_set_begin, it_set_now)) {
-					RGB_DBG("%s: Integration time is not ready yet, get old RGBW data\n", __func__);
-					dataI[0] = cm_lp_info->dataR;
-					dataI[1] = cm_lp_info->dataG;
-					dataI[2] = cm_lp_info->dataB;
-					dataI[3] = cm_lp_info->dataW;
-				} else {
-					cm_lp_info->dataR = dataI[0];
-					cm_lp_info->dataG = dataI[1];
-					cm_lp_info->dataB = dataI[2];
-					cm_lp_info->dataW = dataI[3];
-					g_rgb_status.wait_after_setit = false;
-				}
-			} else {
-				cm_lp_info->dataR = dataI[0];
-				cm_lp_info->dataG = dataI[1];
-				cm_lp_info->dataB = dataI[2];
-				cm_lp_info->dataW = dataI[3];
-			}			
 
 			log_filter++;
 			if(log_filter % 30 == 1 || g_debugMode) {
@@ -1606,13 +1658,15 @@ static struct i2c_driver cm3323e_driver = {
 static int __init cm3323e_init(void)
 {
 	mutex_init(&g_i2c_lock);
-	return i2c_add_driver(&cm3323e_driver);
+	Rear_RGB_delay_workqueue = create_singlethread_workqueue("rear_RGB_delay_wq");	  
+	return i2c_add_driver(&cm3323e_driver);    
 }
 
 static void __exit cm3323e_exit(void)
 {
 	mutex_destroy(&g_i2c_lock);
 	i2c_del_driver(&cm3323e_driver);
+	destroy_workqueue(Rear_RGB_delay_workqueue);    
 }
 
 module_init(cm3323e_init);

@@ -62,10 +62,10 @@ static struct wake_lock 			g_alsps_frgb_wake_lock;
 static struct hrtimer 				g_alsps_frgb_timer;
 static struct i2c_client 			*g_i2c_client;
 static int g_als_last_lux = 0;
-static int g_red_last_raw = 0;
-static int g_green_last_raw = 0;
-static int g_blue_last_raw = 0;
-static int g_ir_last_raw = 0;
+static int g_red_last_raw = -1;
+static int g_green_last_raw = -1;
+static int g_blue_last_raw = -1;
+static int g_ir_last_raw = -1;
 static char *g_error_mesg;
 static int resume_flag = 0;
 
@@ -714,7 +714,7 @@ static int FRGB_turn_onoff(bool bOn)
 static void FRGB_polling_raw(struct work_struct *work)
 {
 	int red = 0, green = 0, blue = 0, ir = 0;
-	int data[4]={0};
+	int data[4]={0,0,0,0};
 	int frgb_log_threshold = 0;
 	static int count = 0;
 
@@ -754,7 +754,7 @@ mutex_lock(&g_alsps_frgb_lock);
 			log("[Polling] Front RGB Sensor Report raw , red=%d, green=%d, blue=%d, ir=%d\n", red, green, blue, ir);
 		}
 
-		if ((0 == red || 0 == green || 0 == blue || 0 == ir) && (count < 15) && (!rgb_first_data_ready)) {
+		if ((0 == red || 0 == green || 0 == blue || 0 == ir) && (count < 7) && (!rgb_first_data_ready)) {
 			queue_delayed_work(ALSPS_FRGB_delay_workqueue, &FRGB_polling_raw_work, msecs_to_jiffies(FRGB_POLLING_FIRST_RAW));
 			count++;
 		} else {
@@ -779,6 +779,10 @@ mutex_lock(&g_alsps_frgb_lock);
 		data[1] = -1;
 		data[2] = -1;
 		data[3] = -1;
+		g_red_last_raw = -1;
+		g_green_last_raw = -1;
+		g_blue_last_raw = -1;
+		g_ir_last_raw = -1;
 		FRGBsensor_report_raw(data, sizeof(data));
 	}
 mutex_unlock(&g_alsps_frgb_lock);
@@ -1546,7 +1550,7 @@ bool mFRGB_show_switch_onoff(void)
 
 int mFRGB_store_switch_onoff(bool bOn)
 {
-	int data[4] = {-1};
+	int data[4] = {-1,-1,-1,-1};
 	static int double_open = 0;
 
 	mutex_lock(&g_alsps_frgb_lock);
@@ -2549,6 +2553,8 @@ static ALSPS_FRGB_I2C mALSPS_FRGB_I2C = {
 static int __init ALSPS_FRGB_init(void)
 {
 	int ret = 0;
+	int data[4] = {-1,-1,-1,-1};
+	
 	log("Driver INIT +++\n");
 
 	/*Record the error message*/
@@ -2623,6 +2629,11 @@ static int __init ALSPS_FRGB_init(void)
 	/*To avoid LUX can NOT report when reboot in LUX=0*/
 	lsensor_report_lux(-1);
 	psensor_report_abs(-1);
+	g_red_last_raw = -1;
+	g_green_last_raw = -1;
+	g_blue_last_raw = -1;
+	g_ir_last_raw = -1;
+	FRGBsensor_report_raw(data, sizeof(data));
 	
 	log("Driver INIT ---\n");
 	return 0;
