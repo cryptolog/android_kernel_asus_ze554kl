@@ -1484,6 +1484,44 @@ static const struct file_operations proc_QPSTInfo_operations = {
 };
 // ASUS_BSP --- Jiunhau_Wang [ZE554KL][QPST][NA][NA] get QPST download status
 
+// ASUS_BSP +++ Vivian_Tsai [ZE554KL][Debug][NA][NA] Add LogUnlock
+static ssize_t logunlock_read(struct file *file, char __user *buf,
+			      size_t count, loff_t *ppos)
+{
+	return 0;
+}
+
+static ssize_t logunlock_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
+{
+	char messages[256];
+	int file_handle;
+	
+	memset(messages, 0, sizeof(char)*256);
+
+	if (count > 256)
+		count = 256;
+	if (copy_from_user(messages, buf, count))
+		return -EFAULT;
+			
+	initKernelEnv();
+	file_handle = sys_open(ASUS_ASDF_BASE_DIR "LogUnlock.txt", O_CREAT | O_RDWR | O_SYNC, 0660);
+	if (!IS_ERR((const void *)(ulong)file_handle)) {
+		sys_write(file_handle, messages, strlen(messages));
+		sys_close(file_handle);
+	}else {
+		printk("[LogTool] logunlock write error: [%d]\n", file_handle);
+	}
+	deinitKernelEnv();
+			
+	return count;
+}
+
+static const struct file_operations proc_logunlock_operations = {
+	.read	= logunlock_read,
+	.write	= logunlock_write,
+};
+// ASUS_BSP --- Vivian_Tsai [ZE554KL][Debug][NA][NA] Add LogUnlock
+
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void asusdebug_early_suspend(struct early_suspend *h)
 {
@@ -1584,6 +1622,8 @@ static int __init proc_asusdebug_init(void)
 // ASUS_BSP +++ Jiunhau_Wang [ZE554KL][QPST][NA][NA] get QPST download status
 	proc_create("QPSTInfo", S_IRWXUGO, NULL, &proc_QPSTInfo_operations);
 // ASUS_BSP --- Jiunhau_Wang [ZE554KL][QPST][NA][NA] get QPST download status
+	proc_create("logunlock", S_IRWXUGO, NULL, &proc_logunlock_operations);
+	
 	PRINTK_BUFFER_VA = ioremap(PRINTK_BUFFER_PA, PRINTK_BUFFER_SIZE);
 	mutex_init(&mA);
 	mutex_init(&mA_erc);//Record the important power event
